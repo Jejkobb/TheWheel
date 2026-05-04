@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Outer Wheel - Layered MVP</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <section class="stage">
+        <div class="wheel-shell">
+          <canvas id="wheelCanvas" width="720" height="720"></canvas>
+        </div>
+        <aside id="paytable" class="paytable"></aside>
+
+        <div class="stage-overlay">
+          <p id="statusText">Booting...</p>
+          <p id="roundText">Press spin to begin from the center layer.</p>
+          <p class="meta-line">
+            Layer:
+            <strong><span id="layerIndexText">1</span>/<span id="layerCountText">1</span></strong>
+            | Potential Max: <strong id="maxPathText">10,000x</strong>
+            | RTP: <strong id="rtpText">96.00%</strong>
+            | Mode: <strong id="modeText">Simulation</strong>
+          </p>
+        </div>
+      </section>
+
+      <section class="hud-wrap">
+        <div class="hud-bar">
+          <div class="hud-field">
+            <span>Credits</span>
+            <strong id="balanceText">$0.00</strong>
+          </div>
+          <div class="hud-field">
+            <span>Win</span>
+            <strong id="winText">$0.00</strong>
+          </div>
+          <div class="hud-field">
+            <span>Bet</span>
+            <strong id="betText">$1.00</strong>
+            <div class="bet-controls">
+              <button id="betDownButton" class="mini-btn" type="button">-</button>
+              <button id="betUpButton" class="mini-btn" type="button">+</button>
+            </div>
+          </div>
+        </div>
+
+        <button id="spinButton" class="spin-btn" type="button" aria-label="Spin wheel">
+          <span class="spin-arrows">↺</span>
+          <span class="spin-label">spin</span>
+        </button>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
