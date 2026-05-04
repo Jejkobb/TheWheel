@@ -7,12 +7,12 @@ MVP prototype for a StakeEngine-aligned layered wheel game:
 - hard max win target is `10,000x`
 - theoretical RTP is calibrated to `96.00%` (simulation math model)
 - payout is the **final landed multiplier only** (no layer-to-layer multiplier chaining)
-- each non-final layer has exactly **one** `UP` segment
+- `UP` density is progression-weighted: Core has `1`, Layer 2 has `3`, Layer 3 has `2`, Layers 4-5 have `1`, and the final layer has `0`
 - all layer segments are equal-size spokes (uniform geometry)
 - multiplier bins use a plinko-style cascading value ladder with dead slices concentrated early
 - no `0.2x` outcomes; progression starts from `0x` then `2x`, `4x`, `8x`, ...
 - first layer is only `UP` or `0x` with a 1-in-4 `UP` chance
-- current geometry uses 4 spokes on Core (`3` x `0x` + `1` x `UP`), 10 spokes on Layers 2-5 (`9` multipliers + `1` UP), and 10 multipliers on the final layer
+- current geometry uses 4 spokes on Core (`3` x `0x` + `1` x `UP`), 12 spokes on Layer 2 (`9` multipliers + `3` UP), 11 spokes on Layer 3 (`9` multipliers + `2` UP), 10 spokes on Layers 4-5 (`9` multipliers + `1` UP), and 10 multipliers on the final layer
 
 ## Run
 

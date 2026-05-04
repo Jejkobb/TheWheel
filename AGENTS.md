@@ -21,10 +21,10 @@ Build and evolve a StakeEngine-based gambling game called **Outer Wheel** where 
 ## MVP Scope (Current)
 - Static frontend game with concentric ring wheel UI.
 - Bottom HUD layout: credits, last win, bet amount, and right-side spin button.
-- Center-to-outer progression using exactly one `UP` segment per non-final layer.
+- Center-to-outer progression with weighted `UP` density by layer (Core: 1, Layer 2: 3, Layer 3: 2, Layers 4-5: 1, final: 0).
 - Layer multipliers follow a plinko-style cascading odds model (left-edge path is highest value).
 - Keep segment geometry equal-width per layer; tune odds via value placement, not wedge size.
-- Keep single-spoke `UP` odds explicit (Core: 1 of 4, Layers 2-5: 1 of 10, final layer: no `UP`).
+- Keep `UP` odds explicit and documented (Core: 1/4, Layer 2: 3/12, Layer 3: 2/11, Layers 4-5: 1/10, final layer: no `UP`).
 - Max theoretical path multiplier set to **10,000x**.
 - Theoretical RTP for layered simulation set to **96.00%**.
 - StakeEngine live-session mode when URL parameters are present.
