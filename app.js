@@ -18,10 +18,71 @@ const BIG_REVEAL_MS = 760;
 const FAIR_ROLL_COUNT = 192;
 const RTP_DISPLAY_TOLERANCE = 0.0005;
 const SIMULATION_BATCH_COUNTS = new Set([100, 300, 500, 1000]);
-const UP_SEGMENT_ICON = "↑";
+const UP_SEGMENT_ICON = "\u2B06";
 // CC0 crack silhouette from Wikimedia Commons (CrackedWindow1.png).
 const UP_BREAK_TEXTURE_URL =
   "https://commons.wikimedia.org/wiki/Special:FilePath/CrackedWindow1.png";
+const SFX_LIBRARY = {
+  spinStart: {
+    src: "AUDIO/UI/Swipe_Swoosh/SFX_UI_Swipe_Swoosh_Medium_1.wav",
+    volume: 0.44,
+    pool: 2,
+  },
+  collision: {
+    src: "AUDIO/Collect/Pop/SFX_Player_Collect_Pop_1.wav",
+    volume: 0.1,
+    pool: 6,
+    throttleMs: 55,
+  },
+  upArm: {
+    src: "AUDIO/UI/Notification/SFX_UI_Notification_Popup_1.wav",
+    volume: 0.42,
+    pool: 3,
+    throttleMs: 80,
+  },
+  upBreakthrough: {
+    src: "AUDIO/Rattle/Glass/SFX_Rattle_Glass_Thick_2.wav",
+    volume: 0.24,
+    pool: 2,
+    throttleMs: 120,
+  },
+  loseZero: {
+    src: "AUDIO/UI/Click/Negative/SFX_UI_Button_Click_Generic_Negative_2.wav",
+    volume: 0.34,
+    pool: 2,
+    throttleMs: 90,
+  },
+  winSmall: {
+    src: "AUDIO/Collect/Coin/SFX_Player_Collect_Coin_2.wav",
+    volume: 0.34,
+    pool: 2,
+    throttleMs: 40,
+  },
+  winMedium: {
+    src: "AUDIO/UI/Bonus/SFX_UI_Bonus_1.wav",
+    volume: 0.42,
+    pool: 2,
+    throttleMs: 60,
+  },
+  winBig: {
+    src: "AUDIO/UI/Success/SFX_UI_Success_Bright_Rich_1.wav",
+    volume: 0.52,
+    pool: 2,
+    throttleMs: 60,
+  },
+  winMax: {
+    src: "AUDIO/Firework/SFX_Firework_Explosion_2.wav",
+    volume: 0.62,
+    pool: 2,
+    throttleMs: 140,
+  },
+  uiClick: {
+    src: "AUDIO/UI/Click/Select/SFX_UI_Button_Click_Select_1.wav",
+    volume: 0.24,
+    pool: 2,
+    throttleMs: 45,
+  },
+};
 
 const FAIR_STORAGE_KEYS = {
   serverSeed: "outer-wheel-server-seed",
@@ -58,64 +119,45 @@ const LAYER_BLUEPRINTS = [
   {
     name: "Layer 2",
     upSlices: 3,
-    multipliers: [0, 0, 0, 0, 2, 2, 4, 8, 10],
+    multipliers: [0, 0, 0, 0, 0, 2, 2, 4, 10],
   },
   {
     name: "Layer 3",
     upSlices: 2,
-    multipliers: [0, 0, 2, 2, 4, 4, 6, 10, 12],
+    multipliers: [0, 0, 0, 2, 2, 4, 6, 10, 16],
   },
   {
     name: "Layer 4",
     upSlices: 1,
-    multipliers: [0, 0, 2, 4, 6, 8, 10, 14, 100],
+    multipliers: [0, 0, 4, 8, 14, 24, 36, 64, 100],
   },
   {
     name: "Layer 5",
     upSlices: 1,
-    multipliers: [0, 0, 2, 4, 6, 8, 10, 14, 100],
+    multipliers: [0, 0, 6, 14, 28, 50, 80, 130, 160],
   },
   {
     name: "Outer Crown",
     upSlices: 0,
     multipliers: [
-      { value: 1000, weight: 2 },
-      0,
-      0,
-      0,
-      500,
-      0,
-      350,
-      0,
-      250,
-      0,
+      1000,
+      600,
+      450,
+      320,
+      240,
+      200,
       160,
-      0,
       140,
-      0,
       120,
-      0,
       100,
-      100,
-      90,
-      0,
       80,
-      0,
-      70,
-      0,
       60,
-      0,
-      50,
-      0,
       40,
-      0,
       30,
-      0,
       20,
-      0,
+      20,
       10,
-      0,
-      0,
+      10,
       0,
       0,
     ],
@@ -191,6 +233,11 @@ const state = {
   simulationTopWins: [],
   simulationNonceCursor: 0,
   simulationLastBatch: null,
+  sound: {
+    enabled: true,
+    pools: {},
+    lastPlayByKey: {},
+  },
   provablyFair: {
     serverSeed: "",
     serverSeedHash: "",
@@ -202,6 +249,104 @@ const state = {
 
 function setStatus(text) {
   void text;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function clampAudioRate(value) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.max(0.6, Math.min(1.65, value));
+}
+
+function initSoundPools() {
+  if (typeof Audio === "undefined") {
+    state.sound.enabled = false;
+    return;
+  }
+
+  const pools = {};
+  for (const [key, config] of Object.entries(SFX_LIBRARY)) {
+    const poolSize = Math.max(1, Math.round(config.pool || 1));
+    const items = [];
+    for (let i = 0; i < poolSize; i += 1) {
+      const audio = new Audio(config.src);
+      audio.preload = "auto";
+      audio.volume = clamp01(config.volume ?? 0.5);
+      items.push(audio);
+    }
+    pools[key] = {
+      baseVolume: clamp01(config.volume ?? 0.5),
+      throttleMs: Math.max(0, Math.round(config.throttleMs || 0)),
+      items,
+      cursor: 0,
+    };
+  }
+
+  state.sound.pools = pools;
+  state.sound.lastPlayByKey = {};
+}
+
+function playSfx(key, options = {}) {
+  if (!state.sound.enabled) {
+    return;
+  }
+
+  const pool = state.sound.pools[key];
+  if (!pool || pool.items.length === 0) {
+    return;
+  }
+
+  const now = performance.now();
+  const lastTime = state.sound.lastPlayByKey[key] ?? -Infinity;
+  if (now - lastTime < pool.throttleMs) {
+    return;
+  }
+  state.sound.lastPlayByKey[key] = now;
+
+  const audio = pool.items[pool.cursor];
+  pool.cursor = (pool.cursor + 1) % pool.items.length;
+
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.playbackRate = clampAudioRate(options.playbackRate ?? 1);
+    audio.volume = clamp01(pool.baseVolume * (options.volumeScale ?? 1));
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {});
+    }
+  } catch {
+    // ignore sound playback failures (autoplay policy, decode errors, etc.)
+  }
+}
+
+function playWinSfx(multiplier) {
+  if (!Number.isFinite(multiplier)) {
+    return;
+  }
+
+  if (multiplier <= 0) {
+    playSfx("loseZero");
+    return;
+  }
+
+  if (multiplier >= state.maxWinMultiplier) {
+    playSfx("winMax");
+    return;
+  }
+  if (multiplier >= 100) {
+    playSfx("winBig");
+    return;
+  }
+  if (multiplier >= 20) {
+    playSfx("winMedium");
+    return;
+  }
+  playSfx("winSmall");
 }
 
 function formatMultiplier(value) {
@@ -1092,6 +1237,30 @@ function drawUpTextureInSlice(image, cx, cy, inner, outer, start, end) {
   ctx.restore();
 }
 
+function drawDoubleUpChevronGlyph(size, color) {
+  const width = size * 0.88;
+  const height = size * 0.34;
+  const gap = size * 0.2;
+  const topY = -height * 0.74;
+  const bottomY = topY + height + gap;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, size * 0.14);
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  const drawChevron = (centerY) => {
+    ctx.beginPath();
+    ctx.moveTo(-width / 2, centerY + height / 2);
+    ctx.lineTo(0, centerY - height / 2);
+    ctx.lineTo(width / 2, centerY + height / 2);
+    ctx.stroke();
+  };
+
+  drawChevron(topY);
+  drawChevron(bottomY);
+}
+
 function drawLabel(text, midAngle, radius, fontSize, color = "#fef3cb", glow = false) {
   ctx.save();
   ctx.translate(
@@ -1102,44 +1271,53 @@ function drawLabel(text, midAngle, radius, fontSize, color = "#fef3cb", glow = f
   ctx.rotate(midAngle + Math.PI / 2);
 
   if (glow) {
-    ctx.shadowColor = "#ffe9a8";
+    ctx.shadowColor = "#ffe3a3";
     ctx.shadowBlur = 14;
   }
 
-  ctx.fillStyle = color;
-  ctx.font = `700 ${fontSize}px "Trebuchet MS", sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, 0, 0);
+  const isUpIcon = text === UP_SEGMENT_ICON;
+  if (isUpIcon) {
+    drawDoubleUpChevronGlyph(fontSize * 1.14, color);
+  } else {
+    ctx.fillStyle = color;
+    ctx.font = `700 ${fontSize}px "Trebuchet MS", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 0, 0);
+  }
   ctx.restore();
 }
 
 function getSegmentPalette(segment) {
   if (segment.type === "up") {
-    return { fill: "#3a8bff", label: "#f5f9ff" };
-  }
-
-  if (segment.value === state.maxWinMultiplier) {
-    return { fill: "#f2c14f", label: "#2a1902" };
+    return { fill: "#2f9bff", label: "#f5fbff" };
   }
 
   if (segment.value === 0) {
-    return { fill: "#4f5560", label: "#dbe4f0" };
+    return { fill: "#1a1d23", label: "#e9edf5" };
   }
 
-  if (segment.value < 10) {
-    return { fill: "#12c2a1", label: "#062016" };
+  if (segment.value === 1000) {
+    return { fill: "#f2c14f", label: "#ffffff" };
   }
 
-  if (segment.value < 100) {
-    return { fill: "#ff8f5f", label: "#2b1004" };
+  if (segment.value >= 250) {
+    return { fill: "#20d095", label: "#ffffff" };
   }
 
-  if (segment.value < 1000) {
-    return { fill: "#d9534f", label: "#2b0908" };
+  if (segment.value >= 100) {
+    return { fill: "#2d7d72", label: "#ffffff" };
   }
 
-  return { fill: "#ff3c6d", label: "#2b020e" };
+  if (segment.value >= 40) {
+    return { fill: "#5f4b7f", label: "#ffffff" };
+  }
+
+  if (segment.value >= 10) {
+    return { fill: "#4d4469", label: "#ffffff" };
+  }
+
+  return { fill: "#2f3949", label: "#ffffff" };
 }
 
 function drawBreakEffect() {
@@ -1196,12 +1374,12 @@ function drawBall() {
   ctx.save();
   ctx.beginPath();
   ctx.arc(state.ballPosition.x, state.ballPosition.y, BALL_RADIUS_PX, 0, Math.PI * 2);
-  ctx.fillStyle = "#fff3cd";
-  ctx.shadowColor = "#ffe28a";
+  ctx.fillStyle = "#f7f8fb";
+  ctx.shadowColor = "rgba(255, 255, 255, 0.55)";
   ctx.shadowBlur = 18;
   ctx.fill();
   ctx.lineWidth = 2;
-  ctx.strokeStyle = "#2b1f0a";
+  ctx.strokeStyle = "#1b1f26";
   ctx.stroke();
   ctx.restore();
 
@@ -1218,7 +1396,7 @@ function drawWheel() {
 
   ctx.beginPath();
   ctx.arc(cx, cy, outerRadius + 7, 0, Math.PI * 2);
-  ctx.fillStyle = "#3a2b14";
+  ctx.fillStyle = "#151921";
   ctx.fill();
 
   state.layers.forEach((layer, layerIndex) => {
@@ -1294,7 +1472,7 @@ function drawWheel() {
       if (layerRemoved) {
         ctx.fillStyle = "rgba(8, 8, 12, 0.6)";
       } else if (segment.type === "up" && upSegmentArmed) {
-        ctx.fillStyle = "rgba(7, 10, 18, 0.88)";
+        ctx.fillStyle = "rgba(26, 116, 224, 0.96)";
       } else {
         ctx.fillStyle = palette.fill;
       }
@@ -1319,12 +1497,12 @@ function drawWheel() {
         ctx.arc(cx, cy, outer, start, mergedMaxEnd);
         ctx.arc(cx, cy, inner, mergedMaxEnd, start, true);
         ctx.closePath();
-        ctx.shadowColor = "#ffe98f";
+        ctx.shadowColor = "#ffe8a1";
         ctx.shadowBlur = 20 + pulse * 8;
-        ctx.strokeStyle = "#fff7ce";
+        ctx.strokeStyle = "#fff8d2";
         ctx.lineWidth = 4.4;
         ctx.stroke();
-        ctx.strokeStyle = "#ffd96f";
+        ctx.strokeStyle = "#f2c14f";
         ctx.lineWidth = 2.1;
         ctx.stroke();
         ctx.restore();
@@ -1334,14 +1512,14 @@ function drawWheel() {
         const pulse = 0.45 + 0.55 * (0.5 + Math.sin((now - state.revealState.startTime) / 80) * 0.5);
         ctx.save();
         ctx.globalAlpha = 0.3 + pulse * 0.25;
-        ctx.fillStyle = "#fff7cc";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
         ctx.fill();
         ctx.restore();
 
         ctx.save();
-        ctx.shadowColor = state.revealState.carnival ? "#ffef92" : "#d9efff";
+        ctx.shadowColor = state.revealState.carnival ? "#ffe082" : "#f5f8ff";
         ctx.shadowBlur = state.revealState.carnival ? 20 : 12;
-        ctx.strokeStyle = state.revealState.carnival ? "#ffef92" : "#d9efff";
+        ctx.strokeStyle = state.revealState.carnival ? "#ffd166" : "#f5f8ff";
         ctx.lineWidth = 5;
         ctx.stroke();
         ctx.restore();
@@ -1359,7 +1537,7 @@ function drawWheel() {
       if (!skipStartBorder) {
         ctx.lineTo(cx + Math.cos(start) * outer, cy + Math.sin(start) * outer);
       }
-      ctx.strokeStyle = "#1b1307";
+      ctx.strokeStyle = "#12161d";
       ctx.lineWidth = 3;
       ctx.stroke();
       ctx.restore();
@@ -1373,9 +1551,9 @@ function drawWheel() {
         ctx.arc(cx, cy, borderOuter, start + 0.012, end - 0.012);
         ctx.arc(cx, cy, borderInner, end - 0.012, start + 0.012, true);
         ctx.closePath();
-        ctx.shadowColor = "rgba(91, 176, 255, 0.78)";
+        ctx.shadowColor = "rgba(132, 204, 255, 0.8)";
         ctx.shadowBlur = 12;
-        ctx.strokeStyle = "rgba(126, 198, 255, 0.98)";
+        ctx.strokeStyle = "rgba(178, 226, 255, 0.98)";
         ctx.lineWidth = 2.5;
         ctx.stroke();
         ctx.restore();
@@ -1454,7 +1632,7 @@ function drawWheel() {
       ctx.closePath();
 
       if (overlay.segment.type === "up" && overlay.upSegmentArmed) {
-        ctx.fillStyle = "rgba(7, 10, 18, 0.88)";
+        ctx.fillStyle = "rgba(26, 116, 224, 0.96)";
       } else {
         ctx.fillStyle = overlay.palette.fill;
       }
@@ -1490,7 +1668,7 @@ function drawWheel() {
           cy + Math.sin(overlay.start) * overlay.outer,
         );
       }
-      ctx.strokeStyle = "#1b1307";
+      ctx.strokeStyle = "#12161d";
       ctx.lineWidth = 3;
       ctx.stroke();
       ctx.restore();
@@ -1502,12 +1680,12 @@ function drawWheel() {
         ctx.arc(cx, cy, overlay.outer, overlay.start, overlay.mergedMaxEnd);
         ctx.arc(cx, cy, overlay.inner, overlay.mergedMaxEnd, overlay.start, true);
         ctx.closePath();
-        ctx.shadowColor = "#ffe98f";
+        ctx.shadowColor = "#ffe8a1";
         ctx.shadowBlur = 20 + pulse * 8;
-        ctx.strokeStyle = "#fff7ce";
+        ctx.strokeStyle = "#fff8d2";
         ctx.lineWidth = 4.4;
         ctx.stroke();
-        ctx.strokeStyle = "#ffd96f";
+        ctx.strokeStyle = "#f2c14f";
         ctx.lineWidth = 2.1;
         ctx.stroke();
         ctx.restore();
@@ -1515,12 +1693,12 @@ function drawWheel() {
 
       ctx.save();
       ctx.globalAlpha = 0.2;
-      ctx.fillStyle = "#fff7cf";
+      ctx.fillStyle = "#ffffff";
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.shadowColor = "#fff0a1";
+      ctx.shadowColor = "#f4d37b";
       ctx.shadowBlur = 22;
-      ctx.strokeStyle = "#fff6bb";
+      ctx.strokeStyle = "#f8e0a0";
       ctx.lineWidth = 4.2;
       ctx.stroke();
       ctx.restore();
@@ -1529,9 +1707,9 @@ function drawWheel() {
 
   ctx.beginPath();
   ctx.arc(cx, cy, centerRadius - 8, 0, Math.PI * 2);
-  ctx.fillStyle = "#20160a";
+  ctx.fillStyle = "#10151d";
   ctx.fill();
-  ctx.strokeStyle = "#f0cb6a";
+  ctx.strokeStyle = "#f8e0a0";
   ctx.lineWidth = 3;
   ctx.stroke();
 
@@ -2173,6 +2351,14 @@ async function playRoundPlan(plan) {
     elapsedSeconds += event.travelSeconds * travelScale;
 
     state.segmentHitsByLayer[event.layerIndex][event.segmentIndex] = event.hitsAfter;
+    if (event.segment.type === "up") {
+      if (event.armedUpOnHit) {
+        playSfx("upArm", { playbackRate: 0.96 + Math.random() * 0.18 });
+      }
+    } else {
+      playSfx("collision", { playbackRate: 0.9 + Math.random() * 0.2 });
+    }
+
     if (event.armedUpOnHit) {
       state.upSegmentsGoneByLayer[event.layerIndex][event.segmentIndex] = true;
     }
@@ -2203,6 +2389,7 @@ async function playRoundPlan(plan) {
 
     if (event.brokeLayer) {
       state.layerGone[event.layerIndex] = true;
+      playSfx("upBreakthrough", { playbackRate: 0.94 + Math.random() * 0.12 });
       startLayerBreakEffect(event);
       const breakSeconds = await playBreakEffect(plan, elapsedSeconds);
       elapsedSeconds += breakSeconds;
@@ -2221,6 +2408,7 @@ async function playRoundPlan(plan) {
     elapsedSeconds += revealSeconds;
 
     if (event.isWinningHit) {
+      playWinSfx(event.segment.value);
       break;
     }
   }
@@ -2259,6 +2447,7 @@ async function spinFlow() {
     state.roundActive = true;
     state.activeLayerIndex = 0;
     resetRoundVisualState();
+    playSfx("spinStart");
 
     const plan = await buildRoundPlan();
     state.provablyFair.lastRoundHash = plan.roundHash;
@@ -2386,10 +2575,12 @@ function attachEvents() {
   });
 
   els.betDownButton.addEventListener("click", () => {
+    playSfx("uiClick");
     adjustBet(-1);
   });
 
   els.betUpButton.addEventListener("click", () => {
+    playSfx("uiClick");
     adjustBet(1);
   });
 
@@ -2413,10 +2604,12 @@ function attachEvents() {
   });
 
   els.applySeedButton.addEventListener("click", () => {
+    playSfx("uiClick");
     applyClientSeed();
   });
 
   els.rotateSeedButton.addEventListener("click", () => {
+    playSfx("uiClick");
     rotateClientSeed();
   });
 
@@ -2428,6 +2621,7 @@ function attachEvents() {
 
   for (const button of els.simButtons) {
     button.addEventListener("click", async () => {
+      playSfx("uiClick");
       const count = Number.parseInt(button.dataset.simCount || "", 10);
       if (!SIMULATION_BATCH_COUNTS.has(count)) {
         setSimulationStatus("Unsupported simulation batch requested.");
@@ -2438,6 +2632,7 @@ function attachEvents() {
   }
 
   els.simReplayButton?.addEventListener("click", async () => {
+    playSfx("uiClick");
     await replaySimulationSpin();
   });
 
@@ -2493,6 +2688,7 @@ async function init() {
   await bootstrapSession();
   await initProvablyFairState();
   loadUpBreakTexture();
+  initSoundPools();
 
   renderPaytable();
   updateHud();
@@ -2509,3 +2705,4 @@ async function init() {
 }
 
 init();
+
