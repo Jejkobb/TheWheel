@@ -134,6 +134,7 @@ const els = {
   balanceText: document.getElementById("balanceText"),
   winText: document.getElementById("winText"),
   betText: document.getElementById("betText"),
+  betAmountInput: document.getElementById("betAmountInput"),
   betDownButton: document.getElementById("betDownButton"),
   betUpButton: document.getElementById("betUpButton"),
   spinButton: document.getElementById("spinButton"),
@@ -200,7 +201,7 @@ const state = {
 };
 
 function setStatus(text) {
-  els.statusText.textContent = text;
+  void text;
 }
 
 function formatMultiplier(value) {
@@ -246,6 +247,37 @@ function formatMoney(amount, currency = state.balance.currency) {
 function formatSignedMoney(amount, currency = state.balance.currency) {
   const sign = amount >= 0 ? "+" : "-";
   return `${sign}${formatMoney(Math.abs(amount), currency)}`;
+}
+
+function formatBetInputValue(rawAmount) {
+  const amount = parseAmountFallback(rawAmount);
+  if (!Number.isFinite(amount)) {
+    return "0";
+  }
+  return amount.toFixed(6).replace(/\.?0+$/, "");
+}
+
+function clampBetAmount(rawAmount) {
+  const minBet = Number.isFinite(state.config.minBet) ? state.config.minBet : SIMULATED_CONFIG.minBet;
+  const maxBet = Number.isFinite(state.config.maxBet) ? state.config.maxBet : SIMULATED_CONFIG.maxBet;
+  if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
+    return Math.max(1, Math.round(minBet));
+  }
+  return Math.max(Math.round(minBet), Math.min(Math.round(maxBet), Math.round(rawAmount)));
+}
+
+function setBetFromInputValue(rawValue) {
+  const normalized = String(rawValue).trim().replace(/,/g, "");
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    updateHud();
+    return false;
+  }
+
+  const rawAmount = clampBetAmount(parsed * API_MULTIPLIER);
+  state.betAmount = rawAmount;
+  updateHud();
+  return true;
 }
 
 function getQueryParams() {
@@ -695,6 +727,22 @@ function updateHud() {
   els.balanceText.textContent = formatMoney(state.balance.amount);
   els.winText.textContent = formatMoney(state.displayedWinAmount);
   els.betText.textContent = formatMoney(state.betAmount);
+  if (els.betAmountInput && document.activeElement !== els.betAmountInput) {
+    els.betAmountInput.value = formatBetInputValue(state.betAmount);
+  }
+  if (els.betAmountInput) {
+    els.betAmountInput.min = formatBetInputValue(
+      Number.isFinite(state.config.minBet) ? state.config.minBet : SIMULATED_CONFIG.minBet,
+    );
+    els.betAmountInput.max = formatBetInputValue(
+      Number.isFinite(state.config.maxBet) ? state.config.maxBet : SIMULATED_CONFIG.maxBet,
+    );
+    els.betAmountInput.step = formatBetInputValue(
+      Number.isFinite(state.config.stepBet) && state.config.stepBet > 0
+        ? state.config.stepBet
+        : SIMULATED_CONFIG.stepBet,
+    );
+  }
   els.layerIndexText.textContent = String(state.activeLayerIndex + 1);
   els.layerCountText.textContent = String(state.layers.length);
   els.livesText.textContent = `${SEGMENT_HITS_TO_BREAK}-hit`;
@@ -739,12 +787,13 @@ function animateDisplayedWin(targetAmount, duration = 1200, superWin = false) {
 }
 
 function syncBetFromConfig() {
-  let index = state.config.betLevels.findIndex((value) => value === state.config.defaultBetLevel);
-  if (index < 0) {
-    index = 0;
-  }
-  state.betIndex = index;
-  state.betAmount = state.config.betLevels[index];
+  const configuredDefault = Number.isFinite(state.config.defaultBetLevel)
+    ? state.config.defaultBetLevel
+    : Number.isFinite(state.config.minBet)
+      ? state.config.minBet
+      : SIMULATED_CONFIG.defaultBetLevel;
+  state.betAmount = clampBetAmount(configuredDefault);
+  state.betIndex = 0;
 }
 
 async function loadStakeSdk() {
@@ -780,7 +829,7 @@ async function bootstrapSession() {
     state.client = StakeSDK.RGSClient({
       url: buildClientUrl(),
       protocol: "https",
-      enforceBetLevels: true,
+      enforceBetLevels: false,
     });
 
     const auth = await state.client.Authenticate();
@@ -1163,6 +1212,7 @@ function drawWheel() {
   const now = performance.now();
   const labels = [];
   const hasFinalWinFocus = Boolean(state.finalWinFocus);
+  const focusedOverlays = [];
 
   ctx.clearRect(0, 0, width, height);
 
@@ -1215,6 +1265,26 @@ function drawWheel() {
         (segmentIndex === state.finalWinFocus.segmentIndex ||
           (focusSpan > 1 &&
             segmentIndex === (state.finalWinFocus.segmentIndex + 1) % layer.segments.length));
+      if (isFocusedSegment) {
+        focusedOverlays.push({
+          layerIndex,
+          segmentIndex,
+          segment,
+          inner,
+          outer,
+          start,
+          end,
+          sweep,
+          nextSweep,
+          palette,
+          layerRemoved,
+          isMaxWin,
+          mergedMaxWithNext,
+          mergedMaxWithPrev,
+          mergedMaxEnd,
+          upSegmentArmed,
+        });
+      }
 
       ctx.beginPath();
       ctx.arc(cx, cy, outer, start, end);
@@ -1334,20 +1404,6 @@ function drawWheel() {
         ctx.restore();
       }
 
-      if (hasFinalWinFocus && isFocusedSegment) {
-        ctx.save();
-        ctx.globalAlpha = 0.2;
-        ctx.fillStyle = "#fff7cf";
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.shadowColor = "#fff0a1";
-        ctx.shadowBlur = 22;
-        ctx.strokeStyle = "#fff6bb";
-        ctx.lineWidth = 4.2;
-        ctx.stroke();
-        ctx.restore();
-      }
-
       if (
         !layerRemoved &&
         sweep >= 0.11 &&
@@ -1385,6 +1441,91 @@ function drawWheel() {
       ctx.restore();
     }
   });
+
+  if (hasFinalWinFocus && focusedOverlays.length > 0) {
+    for (const overlay of focusedOverlays) {
+      if (overlay.layerRemoved) {
+        continue;
+      }
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, overlay.outer, overlay.start, overlay.end);
+      ctx.arc(cx, cy, overlay.inner, overlay.end, overlay.start, true);
+      ctx.closePath();
+
+      if (overlay.segment.type === "up" && overlay.upSegmentArmed) {
+        ctx.fillStyle = "rgba(7, 10, 18, 0.88)";
+      } else {
+        ctx.fillStyle = overlay.palette.fill;
+      }
+      ctx.fill();
+
+      if (overlay.segment.type === "up" && !overlay.upSegmentArmed && state.upBreakTexture) {
+        drawUpTextureInSlice(
+          state.upBreakTexture,
+          cx,
+          cy,
+          overlay.inner,
+          overlay.outer,
+          overlay.start,
+          overlay.end,
+        );
+      }
+
+      const skipStartBorder = overlay.mergedMaxWithPrev;
+      const skipEndBorder = overlay.mergedMaxWithNext;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, overlay.outer, overlay.start, overlay.end);
+      if (!skipEndBorder) {
+        ctx.lineTo(
+          cx + Math.cos(overlay.end) * overlay.inner,
+          cy + Math.sin(overlay.end) * overlay.inner,
+        );
+      }
+      ctx.arc(cx, cy, overlay.inner, overlay.end, overlay.start, true);
+      if (!skipStartBorder) {
+        ctx.lineTo(
+          cx + Math.cos(overlay.start) * overlay.outer,
+          cy + Math.sin(overlay.start) * overlay.outer,
+        );
+      }
+      ctx.strokeStyle = "#1b1307";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+
+      if (overlay.isMaxWin && !overlay.mergedMaxWithPrev) {
+        const pulse = 0.52 + 0.48 * (0.5 + Math.sin(now / 170) * 0.5);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, overlay.outer, overlay.start, overlay.mergedMaxEnd);
+        ctx.arc(cx, cy, overlay.inner, overlay.mergedMaxEnd, overlay.start, true);
+        ctx.closePath();
+        ctx.shadowColor = "#ffe98f";
+        ctx.shadowBlur = 20 + pulse * 8;
+        ctx.strokeStyle = "#fff7ce";
+        ctx.lineWidth = 4.4;
+        ctx.stroke();
+        ctx.strokeStyle = "#ffd96f";
+        ctx.lineWidth = 2.1;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = "#fff7cf";
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.shadowColor = "#fff0a1";
+      ctx.shadowBlur = 22;
+      ctx.strokeStyle = "#fff6bb";
+      ctx.lineWidth = 4.2;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 
   ctx.beginPath();
   ctx.arc(cx, cy, centerRadius - 8, 0, Math.PI * 2);
@@ -1705,14 +1846,10 @@ async function replaySimulationSpin(spinOverride) {
     els.winText.textContent = formatMoney(state.displayedWinAmount);
     replayClass(els.winText, "win-pop");
 
-    els.roundText.textContent = `Replay spin ${spinNumber}/${batch.count}: locking ring start positions...`;
     updateHud();
     drawWheel();
     await animateLayersIntoStartRotation(plan);
 
-    els.roundText.textContent = `Replay spin ${spinNumber}/${batch.count}: ball launched from center.`;
-    updateHud();
-    drawWheel();
     await playRoundPlan(plan);
 
     state.activeLayerIndex = 0;
@@ -2021,17 +2158,6 @@ async function playRoundPlan(plan) {
 
   for (const event of plan.collisions) {
     state.activeLayerIndex = event.layerIndex;
-    const layerName = state.layers[event.layerIndex].name;
-
-    if (event.isWinningHit) {
-      els.roundText.textContent = `${layerName}: ${event.segment.label} is about to shatter...`;
-    } else if (event.passThroughUp) {
-      els.roundText.textContent = `${layerName}: UP hit again, layer is breaking...`;
-    } else if (event.segment.type === "up") {
-      els.roundText.textContent = `${layerName}: UP segment primed. Next UP hit burns this layer.`;
-    } else {
-      els.roundText.textContent = `${layerName}: ${event.segment.label} lit (${event.hitsAfter}/${SEGMENT_HITS_TO_BREAK}).`;
-    }
 
     updateHud();
     const layerSpeedScale = getLayerTravelTimeScale(event.layerIndex, state.layers.length);
@@ -2081,8 +2207,6 @@ async function playRoundPlan(plan) {
       const breakSeconds = await playBreakEffect(plan, elapsedSeconds);
       elapsedSeconds += breakSeconds;
       state.activeLayerIndex = getCurrentActiveLayerIndex(state.layerGone);
-      const nextLayer = state.layers[state.activeLayerIndex].name;
-      els.roundText.textContent = `${layerName}: UP burned away. ${nextLayer} is now live.`;
       updateHud();
       drawWheel();
       continue;
@@ -2097,17 +2221,8 @@ async function playRoundPlan(plan) {
     elapsedSeconds += revealSeconds;
 
     if (event.isWinningHit) {
-      els.roundText.textContent = `${layerName}: ${event.segment.label} broke on hit ${SEGMENT_HITS_TO_BREAK}.`;
-      updateHud();
-      drawWheel();
       break;
     }
-
-    els.roundText.textContent =
-      event.segment.type === "up"
-        ? `${layerName}: UP is primed.`
-        : `${layerName}: ${event.segment.label} is lit (${event.hitsAfter}/${SEGMENT_HITS_TO_BREAK}).`;
-    updateHud();
   }
 
   applyLayerRotationsForElapsed(plan, elapsedSeconds);
@@ -2148,15 +2263,10 @@ async function spinFlow() {
     const plan = await buildRoundPlan();
     state.provablyFair.lastRoundHash = plan.roundHash;
 
-    els.roundText.textContent = "Locking ring start positions...";
     updateProvablyFairPanel();
     updateHud();
     drawWheel();
     await animateLayersIntoStartRotation(plan);
-
-    els.roundText.textContent = "Ball launched from center.";
-    updateHud();
-    drawWheel();
 
     await playRoundPlan(plan);
 
@@ -2223,13 +2333,12 @@ function adjustBet(direction) {
     return;
   }
 
-  const next = Math.min(
-    Math.max(state.betIndex + direction, 0),
-    state.config.betLevels.length - 1,
-  );
-
-  state.betIndex = next;
-  state.betAmount = state.config.betLevels[next];
+  const stepBet =
+    Number.isFinite(state.config.stepBet) && state.config.stepBet > 0
+      ? state.config.stepBet
+      : SIMULATED_CONFIG.stepBet;
+  const nextAmount = state.betAmount + direction * stepBet;
+  state.betAmount = clampBetAmount(nextAmount);
   updateHud();
 }
 
@@ -2282,6 +2391,25 @@ function attachEvents() {
 
   els.betUpButton.addEventListener("click", () => {
     adjustBet(1);
+  });
+
+  els.betAmountInput?.addEventListener("change", () => {
+    setBetFromInputValue(els.betAmountInput.value);
+  });
+
+  els.betAmountInput?.addEventListener("blur", () => {
+    setBetFromInputValue(els.betAmountInput.value);
+  });
+
+  els.betAmountInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      const applied = setBetFromInputValue(els.betAmountInput.value);
+      if (applied) {
+        setStatus("Bet updated.");
+      }
+      event.preventDefault();
+      els.betAmountInput.blur();
+    }
   });
 
   els.applySeedButton.addEventListener("click", () => {
