@@ -1,55 +1,65 @@
 # Outer Wheel MVP
 
-MVP prototype for a StakeEngine-aligned layered wheel game:
-- start in the **center layer**
-- each spin can land either on a **multiplier** (round ends) or **UP** (move to next layer)
-- outer layers offer better multipliers
-- hard max win target is `10,000x`
-- theoretical RTP is calibrated to `96.00%` (simulation math model)
-- payout is the **final landed multiplier only** (no layer-to-layer multiplier chaining)
-- `UP` density is progression-weighted: Core has `1`, Layer 2 has `3`, Layer 3 has `2`, Layers 4-5 have `1`, and the final layer has `0`
-- all layer segments are equal-size spokes (uniform geometry)
-- multiplier bins use a plinko-style cascading value ladder with dead slices concentrated early
-- no `0.2x` outcomes; progression starts from `0x` then `2x`, `4x`, `8x`, ...
-- first layer is only `UP` or `0x` with a 1-in-4 `UP` chance
-- current geometry uses 4 spokes on Core (`3` x `0x` + `1` x `UP`), 12 spokes on Layer 2 (`9` multipliers + `3` UP), 11 spokes on Layer 3 (`9` multipliers + `2` UP), 10 spokes on Layers 4-5 (`9` multipliers + `1` UP), and 10 multipliers on the final layer
+Outer Wheel now runs on a **single-launch, segment-durability mechanic**:
+- click **launch** to fire a ball from the center
+- the ball can hit `UP` or multiplier slices on the current active ring
+- every segment has **2 hit durability**
+- when an `UP` segment reaches 2 hits, the entire layer breaks away
+- when a multiplier segment reaches 2 hits, that multiplier is the win
+- hard max win remains `1,000x`
+- payout is always the final landed multiplier only
+- flight is zero-gravity style with constant-speed ricochets (breakout-like motion)
+- rings use seeded random start angles each round (no continuous spin during flight)
+- UP impacts instantly break/remove the active ring with a short particle burst
+- UP slices use an arrow icon and a crack-texture overlay for visual clarity
+
+## RTP + Math
+
+- Theoretical RTP is calibrated to **96.00%** for this mechanic.
+- UP density remains explicit and unchanged:
+  - Core: `1/4`
+  - Layer 2: `3/12`
+  - Layer 3: `2/11`
+  - Layer 4: `1/10`
+  - Layer 5: `1/10`
+  - Outer Crown: `0`
+- All ring wedges stay equal-width; value tuning is done by multiplier placement.
+- Outer Crown prizes are distributed around the ring instead of clustered in one zone.
+- No fractional outcomes between `0x` and `2x` are used.
+
+## Provably Fair
+
+A clickable **Provably Fair** section is included:
+- server seed hash is displayed
+- client seed is editable
+- `Rotate Seed` regenerates your client seed and resets nonce
+- nonce increments after each resolved round
+- last round hash is shown
+- RNG stream format: `SHA-256(serverSeed:clientSeed:nonce:cursor)`
+
+The round is fully resolved from seeds before animation, then rendered as physics-style motion.
 
 ## Run
-
-Because this is a static build, you can run it with a simple local server:
 
 ```bash
 python -m http.server 8080
 ```
 
-Then open:
+Open:
 
 `http://localhost:8080`
 
-## Layout
-
-- Main stage contains the concentric wheel.
-- A paytable panel shows all layer values and UP chances from the start.
-- Bottom HUD contains:
-  - credits
-  - last win
-  - bet amount
-  - spin button (right side)
-
 ## Modes
 
-- **Simulation mode** (default): local balance/config, full layered UP mechanic.
-- **StakeEngine live mode**: auto-activates when URL has `sessionID` and `rgs_url`.
+- **Simulation mode** (default): full local 2-hit segment-break math and payout.
+- **StakeEngine live mode**: auto-activates when URL includes `sessionID` and `rgs_url`.
 
-Example URL shape for live mode:
+Example live URL:
 
 `https://<host>/index.html?sessionID=<id>&rgs_url=<host>&lang=en&device=desktop`
 
 ## Notes
 
-- Amounts follow StakeEngine's API multiplier (`1_000_000`).
-- Live mode authenticates with StakeEngine and opens/closes rounds with `Play` / `EndRound`.
-- Current layer outcomes are frontend MVP logic; production should source outcomes from published RGS math/event data.
-- Wins above `10x` trigger a count-up animation on the HUD win field.
-- The landed segment is highlighted first, then win value is revealed in the HUD.
-- Pointer tip starts at the inner border of the current layer and moves outward when `UP` advances.
+- Amounts remain in StakeEngine API multiplier format (`1_000_000`).
+- Live flow remains: `Authenticate -> Play -> EndRound`.
+- Deterministic round resolution uses seeds and nonce; animation is visual only.

@@ -1,9 +1,34 @@
-﻿const API_MULTIPLIER = 1_000_000;
-const SPIN_DURATION_MS = 1450;
-const POINTER_ANGLE = -Math.PI / 2;
+const API_MULTIPLIER = 1_000_000;
 const TARGET_RTP = 0.96;
-const LANDING_REVEAL_MS = 760;
-const CARNIVAL_REVEAL_MS = 2400;
+const SEGMENT_HITS_TO_BREAK = 2;
+const MAX_COLLISIONS_PER_ROUND = 220;
+const BALL_RADIUS_PX = 10;
+const BALL_SPEED_PX_PER_SEC = 420;
+const COLLISION_EPSILON_SEC = 0.0009;
+const REFLECT_JITTER_MAX_RAD = 0.28;
+const REFLECT_SWAY_MAX_RAD = 0.16;
+const PRELAUNCH_INNER_LAYER_MS = 340;
+const PRELAUNCH_OUTER_LAYER_MS = 620;
+const PRELAUNCH_MIN_TURNS = 0.6;
+const PRELAUNCH_MAX_TURNS = 1.6;
+const FINAL_HIT_SLOW_FACTOR = 2.4;
+const BREAK_EFFECT_MS = 150;
+const LANDING_REVEAL_MS = 240;
+const BIG_REVEAL_MS = 760;
+const FAIR_ROLL_COUNT = 192;
+const RTP_DISPLAY_TOLERANCE = 0.0005;
+const SIMULATION_BATCH_COUNTS = new Set([100, 300, 500, 1000]);
+const UP_SEGMENT_ICON = "↑";
+// CC0 crack silhouette from Wikimedia Commons (CrackedWindow1.png).
+const UP_BREAK_TEXTURE_URL =
+  "https://commons.wikimedia.org/wiki/Special:FilePath/CrackedWindow1.png";
+
+const FAIR_STORAGE_KEYS = {
+  serverSeed: "outer-wheel-server-seed",
+  clientSeed: "outer-wheel-client-seed",
+  nonce: "outer-wheel-seed-nonce",
+  lastRoundHash: "outer-wheel-last-round-hash",
+};
 
 const StakeSDK = {
   DisplayAmount: null,
@@ -27,102 +52,83 @@ const SIMULATED_BALANCE = {
 const LAYER_BLUEPRINTS = [
   {
     name: "Core",
-    upWeight: 1,
     upSlices: 1,
-    multipliers: [
-      { value: 0, weight: 1 },
-      { value: 0, weight: 1 },
-      { value: 0, weight: 1 },
-    ],
+    multipliers: [0, 0, 0],
   },
   {
     name: "Layer 2",
-    upWeight: 3,
     upSlices: 3,
-    multipliers: [
-      { value: 0, weight: 1 },
-      { value: 2, weight: 1 },
-      { value: 2, weight: 1 },
-      { value: 2, weight: 1 },
-      { value: 2, weight: 1 },
-      { value: 2, weight: 1 },
-      { value: 2, weight: 1 },
-      { value: 2, weight: 1 },
-      { value: 4, weight: 1 },
-    ],
+    multipliers: [0, 0, 0, 0, 2, 2, 4, 8, 10],
   },
   {
     name: "Layer 3",
-    upWeight: 2,
     upSlices: 2,
-    multipliers: [
-      { value: 0, weight: 1 },
-      { value: 2, weight: 1 },
-      { value: 2, weight: 1 },
-      { value: 4, weight: 1 },
-      { value: 4, weight: 1 },
-      { value: 4, weight: 1 },
-      { value: 4, weight: 1 },
-      { value: 6, weight: 1 },
-      { value: 6, weight: 1 },
-    ],
+    multipliers: [0, 0, 2, 2, 4, 4, 6, 10, 12],
   },
   {
     name: "Layer 4",
-    upWeight: 1,
     upSlices: 1,
-    multipliers: [
-      { value: 0, weight: 1 },
-      { value: 6, weight: 1 },
-      { value: 8, weight: 1 },
-      { value: 10, weight: 1 },
-      { value: 10, weight: 1 },
-      { value: 12, weight: 1 },
-      { value: 14, weight: 1 },
-      { value: 18, weight: 1 },
-      { value: 22, weight: 1 },
-    ],
+    multipliers: [0, 0, 2, 4, 6, 8, 10, 14, 100],
   },
   {
     name: "Layer 5",
-    upWeight: 1,
     upSlices: 1,
-    multipliers: [
-      { value: 0, weight: 1 },
-      { value: 12, weight: 1 },
-      { value: 16, weight: 1 },
-      { value: 18, weight: 1 },
-      { value: 20, weight: 1 },
-      { value: 22, weight: 1 },
-      { value: 26, weight: 1 },
-      { value: 34, weight: 1 },
-      { value: 42, weight: 1 },
-    ],
+    multipliers: [0, 0, 2, 4, 6, 8, 10, 14, 100],
   },
   {
     name: "Outer Crown",
-    upWeight: 0,
     upSlices: 0,
     multipliers: [
-      { value: 10000, weight: 1 },
-      { value: 5000, weight: 1 },
-      { value: 2500, weight: 1 },
-      { value: 1700, weight: 1 },
-      { value: 1300, weight: 1 },
-      { value: 900, weight: 1 },
-      { value: 800, weight: 1 },
-      { value: 600, weight: 1 },
-      { value: 450, weight: 1 },
-      { value: 330, weight: 1 },
+      { value: 1000, weight: 2 },
+      0,
+      0,
+      0,
+      500,
+      0,
+      350,
+      0,
+      250,
+      0,
+      160,
+      0,
+      140,
+      0,
+      120,
+      0,
+      100,
+      100,
+      90,
+      0,
+      80,
+      0,
+      70,
+      0,
+      60,
+      0,
+      50,
+      0,
+      40,
+      0,
+      30,
+      0,
+      20,
+      0,
+      10,
+      0,
+      0,
+      0,
+      0,
     ],
   },
 ];
+
 const els = {
   modeText: document.getElementById("modeText"),
   statusText: document.getElementById("statusText"),
   roundText: document.getElementById("roundText"),
   layerIndexText: document.getElementById("layerIndexText"),
   layerCountText: document.getElementById("layerCountText"),
+  livesText: document.getElementById("livesText"),
   maxPathText: document.getElementById("maxPathText"),
   rtpText: document.getElementById("rtpText"),
   balanceText: document.getElementById("balanceText"),
@@ -133,6 +139,18 @@ const els = {
   spinButton: document.getElementById("spinButton"),
   wheelCanvas: document.getElementById("wheelCanvas"),
   paytable: document.getElementById("paytable"),
+  clientSeedInput: document.getElementById("clientSeedInput"),
+  applySeedButton: document.getElementById("applySeedButton"),
+  rotateSeedButton: document.getElementById("rotateSeedButton"),
+  serverSeedHashText: document.getElementById("serverSeedHashText"),
+  fairNonceText: document.getElementById("fairNonceText"),
+  lastRoundHashText: document.getElementById("lastRoundHashText"),
+  simStatusText: document.getElementById("simStatusText"),
+  simReplayHint: document.getElementById("simReplayHint"),
+  simTopList: document.getElementById("simTopList"),
+  simButtons: Array.from(document.querySelectorAll("[data-sim-count]")),
+  simReplayInput: document.getElementById("simReplayInput"),
+  simReplayButton: document.getElementById("simReplayButton"),
 };
 
 const ctx = els.wheelCanvas.getContext("2d");
@@ -149,16 +167,36 @@ const state = {
   lastWinAmount: 0,
   lastResolvedMultiplier: 0,
   roundActive: false,
-  activeLayerIndex: 0,
   spinning: false,
+  activeLayerIndex: 0,
   liveRound: null,
   layers: [],
   theoreticalRtp: 0,
+  terminalLayerProbabilities: [],
   maxWinMultiplier: 0,
   layerRotations: [],
+  layerGone: [],
   latestOutcomeByLayer: [],
-  winAnimationFrame: null,
+  segmentHitsByLayer: [],
+  upSegmentsGoneByLayer: [],
   revealState: null,
+  finalWinFocus: null,
+  winAnimationFrame: null,
+  ballVisible: true,
+  ballPosition: { x: els.wheelCanvas.width / 2, y: els.wheelCanvas.height / 2 },
+  ballTrail: [],
+  breakEffect: null,
+  upBreakTexture: null,
+  simulationTopWins: [],
+  simulationNonceCursor: 0,
+  simulationLastBatch: null,
+  provablyFair: {
+    serverSeed: "",
+    serverSeedHash: "",
+    clientSeed: "",
+    nonce: 0,
+    lastRoundHash: "",
+  },
 };
 
 function setStatus(text) {
@@ -173,9 +211,9 @@ function formatMultiplier(value) {
     return "0x";
   }
   if (value >= 10) {
-    return `${value.toFixed(1).replace(/\\.0$/, "")}x`;
+    return `${value.toFixed(1).replace(/\.0$/, "")}x`;
   }
-  return `${value.toFixed(2).replace(/0$/, "").replace(/\\.0$/, "")}x`;
+  return `${value.toFixed(2).replace(/0$/, "").replace(/\.0$/, "")}x`;
 }
 
 function replayClass(element, className) {
@@ -205,17 +243,9 @@ function formatMoney(amount, currency = state.balance.currency) {
   }
 }
 
-function weightedPick(segments) {
-  const total = segments.reduce((sum, segment) => sum + segment.weight, 0);
-  const roll = Math.random() * total;
-  let running = 0;
-  for (let i = 0; i < segments.length; i += 1) {
-    running += segments[i].weight;
-    if (roll <= running) {
-      return i;
-    }
-  }
-  return segments.length - 1;
+function formatSignedMoney(amount, currency = state.balance.currency) {
+  const sign = amount >= 0 ? "+" : "-";
+  return `${sign}${formatMoney(Math.abs(amount), currency)}`;
 }
 
 function getQueryParams() {
@@ -236,24 +266,252 @@ function buildClientUrl() {
   return url.href;
 }
 
+function normalizeAngle(angle) {
+  const full = Math.PI * 2;
+  return ((angle % full) + full) % full;
+}
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
+}
+
+function getLayerTravelTimeScale(layerIndex, layerCount) {
+  if (layerCount <= 1) {
+    return 1;
+  }
+
+  const progress = layerIndex / (layerCount - 1);
+  if (progress < 0.2) {
+    return 0.98;
+  }
+  if (progress < 0.45) {
+    return 0.8;
+  }
+  if (progress < 0.65) {
+    return 0.88;
+  }
+  if (progress < 0.85) {
+    return 1.08;
+  }
+  return 1.34;
+}
+
+function bytesToHex(bytes) {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function generateSeed(prefix) {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return `${prefix}-${bytesToHex(bytes)}`;
+}
+
+function sanitizeSeed(raw) {
+  const cleaned = raw.trim().replace(/[^a-zA-Z0-9:_-]/g, "-").slice(0, 64);
+  return cleaned || generateSeed("client");
+}
+
+async function sha256Hex(input) {
+  if (!globalThis.crypto?.subtle) {
+    let hash = 2166136261;
+    for (let i = 0; i < input.length; i += 1) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    const fallback = (hash >>> 0).toString(16).padStart(8, "0");
+    return fallback.repeat(8);
+  }
+
+  const encoded = new TextEncoder().encode(input);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", encoded);
+  return bytesToHex(new Uint8Array(digest));
+}
+
+function loadStorage(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function saveStorage(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function persistProvablyFairState() {
+  saveStorage(FAIR_STORAGE_KEYS.serverSeed, state.provablyFair.serverSeed);
+  saveStorage(FAIR_STORAGE_KEYS.clientSeed, state.provablyFair.clientSeed);
+  saveStorage(FAIR_STORAGE_KEYS.nonce, String(state.provablyFair.nonce));
+  saveStorage(FAIR_STORAGE_KEYS.lastRoundHash, state.provablyFair.lastRoundHash || "");
+}
+
+async function initProvablyFairState() {
+  const storedServerSeed = loadStorage(FAIR_STORAGE_KEYS.serverSeed);
+  const storedClientSeed = loadStorage(FAIR_STORAGE_KEYS.clientSeed);
+  const storedNonce = Number.parseInt(loadStorage(FAIR_STORAGE_KEYS.nonce) || "0", 10);
+
+  state.provablyFair.serverSeed = storedServerSeed || generateSeed("server");
+  state.provablyFair.clientSeed = sanitizeSeed(storedClientSeed || generateSeed("client"));
+  state.provablyFair.nonce = Number.isFinite(storedNonce) && storedNonce >= 0 ? storedNonce : 0;
+  state.provablyFair.lastRoundHash = loadStorage(FAIR_STORAGE_KEYS.lastRoundHash) || "";
+  state.provablyFair.serverSeedHash = await sha256Hex(state.provablyFair.serverSeed);
+
+  persistProvablyFairState();
+  updateProvablyFairPanel();
+}
+
+function updateProvablyFairPanel() {
+  els.clientSeedInput.value = state.provablyFair.clientSeed;
+  els.serverSeedHashText.textContent = state.provablyFair.serverSeedHash;
+  els.fairNonceText.textContent = String(state.provablyFair.nonce);
+  els.lastRoundHashText.textContent = state.provablyFair.lastRoundHash || "-";
+}
+
+function setSimulationStatus(text) {
+  if (els.simStatusText) {
+    els.simStatusText.textContent = text;
+  }
+}
+
+function setSimulationReplayHint(text) {
+  if (els.simReplayHint) {
+    els.simReplayHint.textContent = text;
+  }
+}
+
+function updateSimulationReplayUi() {
+  const maxSpins = state.simulationLastBatch?.count || 0;
+  const hasBatch = maxSpins > 0;
+  const busy = state.spinning || state.roundActive;
+
+  if (els.simReplayInput) {
+    els.simReplayInput.disabled = !hasBatch || busy;
+    els.simReplayInput.min = "1";
+    els.simReplayInput.max = hasBatch ? String(maxSpins) : "1";
+    if (!hasBatch) {
+      els.simReplayInput.value = "";
+    }
+  }
+
+  if (els.simReplayButton) {
+    els.simReplayButton.disabled = !hasBatch || busy;
+  }
+
+  if (!hasBatch) {
+    setSimulationReplayHint("Run a simulation batch first, then pick a spin.");
+    return;
+  }
+
+  const selected = Number.parseInt(els.simReplayInput?.value || "", 10);
+  if (!Number.isFinite(selected) || selected < 1 || selected > maxSpins) {
+    setSimulationReplayHint(`Pick a spin from 1 to ${maxSpins}.`);
+    return;
+  }
+
+  setSimulationReplayHint(`Ready to replay spin ${selected}/${maxSpins}.`);
+}
+
+function renderSimulationTopWins(entries = state.simulationTopWins) {
+  if (!els.simTopList) {
+    return;
+  }
+
+  if (!entries.length) {
+    els.simTopList.innerHTML = "<li>No simulation run yet.</li>";
+    return;
+  }
+
+  const rows = entries
+    .slice(0, 3)
+    .map(
+      (entry, index) =>
+        `<li><span>#${index + 1} Spin ${entry.spin} | ${formatMultiplier(entry.multiplier)} | ${formatMoney(entry.winAmount)} | ${entry.layerName}</span><button class="mini-btn" type="button" data-replay-spin="${entry.spin}">Watch</button></li>`,
+    )
+    .join("");
+
+  els.simTopList.innerHTML = rows;
+}
+
+function recordSimulationTopWin(topEntries, entry) {
+  topEntries.push(entry);
+  topEntries.sort((a, b) => {
+    if (b.multiplier !== a.multiplier) {
+      return b.multiplier - a.multiplier;
+    }
+    if (b.winAmount !== a.winAmount) {
+      return b.winAmount - a.winAmount;
+    }
+    return a.spin - b.spin;
+  });
+  if (topEntries.length > 3) {
+    topEntries.length = 3;
+  }
+}
+
+async function createFairRolls(serverSeed, clientSeed, nonce, count) {
+  const material = `${serverSeed}:${clientSeed}:${nonce}`;
+  const rolls = [];
+  let cursor = 0;
+
+  while (rolls.length < count) {
+    const hash = await sha256Hex(`${material}:${cursor}`);
+    for (let i = 0; i <= hash.length - 8; i += 8) {
+      const chunk = hash.slice(i, i + 8);
+      const raw = Number.parseInt(chunk, 16);
+      rolls.push(raw / 0x100000000);
+      if (rolls.length >= count) {
+        break;
+      }
+    }
+    cursor += 1;
+  }
+
+  return { material, rolls };
+}
+
 function buildLayersFromBlueprint() {
   return LAYER_BLUEPRINTS.map((blueprint) => {
-    const multiplierSegments = blueprint.multipliers.map((entry) => ({
-      type: "mult",
-      value: entry.value,
-      weight: entry.weight,
-    }));
+    const multiplierSegments = blueprint.multipliers.map((entry) => {
+      if (typeof entry === "number") {
+        return {
+          type: "mult",
+          value: entry,
+          weight: 1,
+        };
+      }
+
+      const parsedValue = Number(entry?.value);
+      const parsedWeight = Number(entry?.weight);
+      return {
+        type: "mult",
+        value: Number.isFinite(parsedValue) ? parsedValue : 0,
+        weight: Number.isFinite(parsedWeight) ? Math.max(1, Math.round(parsedWeight)) : 1,
+      };
+    });
 
     const segments = [...multiplierSegments];
-    if (blueprint.upWeight > 0 && blueprint.upSlices > 0) {
-      const pieceWeight = blueprint.upWeight / blueprint.upSlices;
+
+    if (blueprint.upSlices > 0) {
+      segments.length = 0;
       const upSegments = Array.from({ length: blueprint.upSlices }, () => ({
         type: "up",
-        weight: pieceWeight,
         value: null,
+        weight: 1,
       }));
 
-      segments.length = 0;
       let insertedUps = 0;
       const multiCount = multiplierSegments.length;
 
@@ -269,48 +527,87 @@ function buildLayersFromBlueprint() {
       }
     }
 
-    const totalWeight = segments.reduce((sum, segment) => sum + segment.weight, 0);
-    const withMeta = segments.map((segment) => ({
-      ...segment,
-      chance: segment.weight / totalWeight,
-      label:
-        segment.type === "up"
-          ? "UP"
-          : segment.value === 10000
-            ? "10Kx"
-            : formatMultiplier(segment.value),
-    }));
+    const totalWeight = segments.reduce(
+      (sum, segment) => sum + Math.max(1, segment.weight || 1),
+      0,
+    );
+    const upWeight = segments.reduce(
+      (sum, segment) =>
+        sum + (segment.type === "up" ? Math.max(1, segment.weight || 1) : 0),
+      0,
+    );
+    const multiplierWeight = segments.reduce(
+      (sum, segment) =>
+        sum + (segment.type === "mult" ? Math.max(1, segment.weight || 1) : 0),
+      0,
+    );
+    const multiplierWeightedSum = segments.reduce(
+      (sum, segment) =>
+        sum +
+        (segment.type === "mult"
+          ? segment.value * Math.max(1, segment.weight || 1)
+          : 0),
+      0,
+    );
+
+    const terminalMean = multiplierWeightedSum / Math.max(multiplierWeight, 1);
 
     return {
       name: blueprint.name,
-      segments: withMeta,
+      segments: segments.map((segment) => {
+        const segmentWeight = Math.max(1, segment.weight || 1);
+        return {
+          ...segment,
+          weight: segmentWeight,
+          chance: segmentWeight / totalWeight,
+          label:
+            segment.type === "up"
+              ? UP_SEGMENT_ICON
+              : segment.value === 1000
+                ? "1,000x"
+                : formatMultiplier(segment.value),
+        };
+      }),
       totalWeight,
+      upChance: upWeight / totalWeight,
+      terminalMean,
     };
   });
 }
 
-function expectedFromLayer(layerIndex) {
-  const layer = state.layers[layerIndex];
-  const multiExpectation = layer.segments
-    .filter((segment) => segment.type === "mult")
-    .reduce(
-      (sum, segment) => sum + (segment.weight / layer.totalWeight) * segment.value,
-      0,
-    );
-
-  const upProbability = layer.segments
-    .filter((segment) => segment.type === "up")
-    .reduce((sum, segment) => sum + segment.weight / layer.totalWeight, 0);
-
-  if (upProbability === 0 || layerIndex === state.layers.length - 1) {
-    return multiExpectation;
+function expectedFromState(layerIndex, memo) {
+  const key = String(layerIndex);
+  if (memo.has(key)) {
+    return memo.get(key);
   }
 
-  return multiExpectation + upProbability * expectedFromLayer(layerIndex + 1);
+  const layer = state.layers[layerIndex];
+  const upProbability = layer.upChance;
+  const terminalProbability = 1 - upProbability;
+
+  let expectation = terminalProbability * layer.terminalMean;
+  if (upProbability > 0 && layerIndex < state.layers.length - 1) {
+    expectation += upProbability * expectedFromState(layerIndex + 1, memo);
+  }
+
+  memo.set(key, expectation);
+  return expectation;
+}
+
+function calculateTerminalLayerProbabilities() {
+  const probabilities = state.layers.map(() => 0);
+  let carry = 1;
+  for (let i = 0; i < state.layers.length; i += 1) {
+    const upProbability = state.layers[i].upChance;
+    probabilities[i] = carry * (1 - upProbability);
+    carry *= upProbability;
+  }
+  return probabilities;
 }
 
 function updateDerivedMath() {
-  state.theoreticalRtp = expectedFromLayer(0);
+  state.theoreticalRtp = expectedFromState(0, new Map());
+  state.terminalLayerProbabilities = calculateTerminalLayerProbabilities();
 
   state.maxWinMultiplier = state.layers.reduce((max, layer) => {
     const layerMax = layer.segments
@@ -320,40 +617,77 @@ function updateDerivedMath() {
   }, 0);
 }
 
+function runMathSanityChecks() {
+  if (state.maxWinMultiplier !== 1000) {
+    throw new Error("Max path sanity failed: 1,000x must remain reachable.");
+  }
+
+  const badLowMultiplier = state.layers
+    .flatMap((layer) => layer.segments)
+    .find((segment) => segment.type === "mult" && segment.value > 0 && segment.value < 2);
+
+  if (badLowMultiplier) {
+    throw new Error("Sanity failed: multipliers between 0x and 2x are not allowed.");
+  }
+
+  const expectedUpChances = [1 / 4, 3 / 12, 2 / 11, 1 / 10, 1 / 10, 0];
+  const upChanceMismatch = state.layers.find((layer, index) => {
+    const expected = expectedUpChances[index];
+    return Math.abs(layer.upChance - expected) > 1e-9;
+  });
+
+  if (upChanceMismatch) {
+    throw new Error("Sanity failed: UP chances drifted from agreed layer values.");
+  }
+
+  if (Math.abs(state.theoreticalRtp - TARGET_RTP) > 0.001) {
+    throw new Error(
+      `Sanity failed: RTP moved to ${(state.theoreticalRtp * 100).toFixed(4)}%, expected ~96.00%.`,
+    );
+  }
+}
+
 function renderPaytable() {
   const rows = state.layers
     .map((layer, layerIndex) => {
-      const multipliers = layer.segments.filter((segment) => segment.type === "mult");
-      const upSegment = layer.segments.find((segment) => segment.type === "up");
-      const totalMultiWeight = multipliers.reduce(
-        (sum, segment) => sum + segment.weight,
+      const multiplierSegments = layer.segments
+        .filter((segment) => segment.type === "mult")
+        .map((segment) => ({
+          value: segment.value,
+          weight: Math.max(1, segment.weight || 1),
+        }));
+
+      const nonZero = multiplierSegments.filter((segment) => segment.value > 0);
+      const zeroWeight = multiplierSegments.reduce(
+        (sum, segment) => sum + (segment.value === 0 ? segment.weight : 0),
         0,
       );
+      const multiplierWeight = multiplierSegments.reduce((sum, segment) => sum + segment.weight, 0);
+      const valueLine =
+        nonZero.length > 0
+          ? nonZero.map((segment) => formatMultiplier(segment.value)).join(" -> ")
+          : "No payout slices";
 
-      const plinkoOdds = multipliers.map((segment) => segment.weight).join(":");
-      const binLine = multipliers
-        .map((segment, binIndex) => {
-          const chance = (segment.weight / totalMultiWeight) * 100;
-          return `L${binIndex} ${segment.label} (${chance.toFixed(1)}%)`;
-        })
-        .join(" -> ");
+      const upChanceText =
+        layer.upChance > 0
+          ? `UP chance ${(layer.upChance * 100).toFixed(2)}%`
+          : "No UP (final layer)";
 
-      const upChanceText = upSegment
-        ? `UP ${(upSegment.chance * 100).toFixed(2)}%`
-        : "No UP (final layer)";
+      const terminalChance = state.terminalLayerProbabilities[layerIndex] * 100;
 
       return `
         <div class="pay-layer">
           <div class="pay-layer-title">${layerIndex + 1}. ${layer.name}</div>
-          <div class="pay-layer-values">Plinko bins (Left -> Right): ${binLine}</div>
-          <div class="pay-layer-values">Equal spokes: ${layer.segments.length} total | bin odds ${plinkoOdds}</div>
+          <div class="pay-layer-values">Terminal hit chance at this layer: ${terminalChance.toFixed(3)}%</div>
           <div class="pay-layer-values">${upChanceText}</div>
+          <div class="pay-layer-values">Non-zero ladder: ${valueLine}</div>
+          <div class="pay-layer-values">Dead slices: ${zeroWeight}/${Math.max(1, multiplierWeight)}</div>
         </div>
       `;
     })
     .join("");
 
-  els.paytable.innerHTML = `<h3>Plinko Cascade</h3>${rows}`;
+  els.paytable.innerHTML = `<h3>2-Hit Segment Math</h3>${rows}`;
 }
 
 function updateHud() {
@@ -363,10 +697,13 @@ function updateHud() {
   els.betText.textContent = formatMoney(state.betAmount);
   els.layerIndexText.textContent = String(state.activeLayerIndex + 1);
   els.layerCountText.textContent = String(state.layers.length);
+  els.livesText.textContent = `${SEGMENT_HITS_TO_BREAK}-hit`;
   els.maxPathText.textContent = formatMultiplier(state.maxWinMultiplier);
+
   const rtp = state.theoreticalRtp * 100;
   const rtpDrift = Math.abs(state.theoreticalRtp - TARGET_RTP);
-  els.rtpText.textContent = rtpDrift < 0.0005 ? `${rtp.toFixed(2)}%` : `${rtp.toFixed(2)}%*`;
+  els.rtpText.textContent =
+    rtpDrift <= RTP_DISPLAY_TOLERANCE ? `${rtp.toFixed(2)}%` : `${rtp.toFixed(2)}%*`;
 }
 
 function clearWinAnimation() {
@@ -402,9 +739,7 @@ function animateDisplayedWin(targetAmount, duration = 1200, superWin = false) {
 }
 
 function syncBetFromConfig() {
-  let index = state.config.betLevels.findIndex(
-    (value) => value === state.config.defaultBetLevel,
-  );
+  let index = state.config.betLevels.findIndex((value) => value === state.config.defaultBetLevel);
   if (index < 0) {
     index = 0;
   }
@@ -447,6 +782,7 @@ async function bootstrapSession() {
       protocol: "https",
       enforceBetLevels: true,
     });
+
     const auth = await state.client.Authenticate();
     state.mode = "stake";
     state.authenticated = true;
@@ -461,6 +797,7 @@ async function bootstrapSession() {
     state.balance = { ...SIMULATED_BALANCE };
     state.config = { ...SIMULATED_CONFIG };
     syncBetFromConfig();
+
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`Live connection failed (${message}). Simulation active.`);
   }
@@ -471,68 +808,173 @@ function setSpinDisabled(disabled) {
   els.spinButton.disabled = disabled;
   els.betDownButton.disabled = disabled || state.roundActive;
   els.betUpButton.disabled = disabled || state.roundActive;
-}
-
-function normalizeAngle(angle) {
-  const full = Math.PI * 2;
-  return ((angle % full) + full) % full;
-}
-
-function easeInOutCubic(t) {
-  return t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
-}
-
-function getWinningRotation(layer, selectedIndex) {
-  let start = 0;
-  for (let i = 0; i < selectedIndex; i += 1) {
-    start += (layer.segments[i].weight / layer.totalWeight) * Math.PI * 2;
-  }
-  const sweep =
-    (layer.segments[selectedIndex].weight / layer.totalWeight) * Math.PI * 2;
-  const segmentMid = start + sweep / 2;
-  return normalizeAngle(POINTER_ANGLE - segmentMid);
-}
-
-function getPointerSegmentIndex(layer, rotation) {
-  const relative = normalizeAngle(POINTER_ANGLE - normalizeAngle(rotation));
-  let current = 0;
-
-  for (let i = 0; i < layer.segments.length; i += 1) {
-    const sweep = (layer.segments[i].weight / layer.totalWeight) * Math.PI * 2;
-    const next = current + sweep;
-    if (relative >= current && relative < next) {
-      return i;
+  els.applySeedButton.disabled = disabled || state.roundActive;
+  els.rotateSeedButton.disabled = disabled || state.roundActive;
+  els.clientSeedInput.disabled = disabled || state.roundActive;
+  if (els.simButtons?.length) {
+    for (const button of els.simButtons) {
+      button.disabled = disabled || state.roundActive;
     }
-    current = next;
+  }
+  updateSimulationReplayUi();
+}
+
+function getWheelGeometry() {
+  const { width, height } = els.wheelCanvas;
+  const cx = width / 2;
+  const cy = height / 2;
+  const centerRadius = 76;
+  const outerRadius = Math.min(width, height) / 2 - 16;
+  const ringThickness =
+    state.layers.length > 0 ? (outerRadius - centerRadius) / state.layers.length : 0;
+
+  return {
+    width,
+    height,
+    cx,
+    cy,
+    centerRadius,
+    outerRadius,
+    ringThickness,
+  };
+}
+
+function getCurrentActiveLayerIndex(layerGone) {
+  const next = layerGone.findIndex((isGone) => !isGone);
+  return next < 0 ? state.layers.length - 1 : next;
+}
+
+function getLayerTotalWeight(layer) {
+  if (Number.isFinite(layer.totalWeight) && layer.totalWeight > 0) {
+    return layer.totalWeight;
+  }
+  const fallbackWeight = layer.segments.reduce(
+    (sum, segment) => sum + Math.max(1, segment.weight || 1),
+    0,
+  );
+  return Math.max(1, fallbackWeight);
+}
+
+function getSegmentIndexFromAngle(layer, impactAngle, rotation) {
+  const localAngle = normalizeAngle(impactAngle - normalizeAngle(rotation));
+  const totalWeight = getLayerTotalWeight(layer);
+  const localWeightPosition = (localAngle / (Math.PI * 2)) * totalWeight;
+  let cumulativeWeight = 0;
+
+  for (let index = 0; index < layer.segments.length; index += 1) {
+    cumulativeWeight += Math.max(1, layer.segments[index].weight || 1);
+    if (localWeightPosition < cumulativeWeight - 1e-9) {
+      return index;
+    }
   }
 
   return layer.segments.length - 1;
 }
 
-async function animateLayerSpin(layerIndex, selectedIndex) {
-  const layer = state.layers[layerIndex];
+function getCenterPoint() {
+  const { cx, cy } = getWheelGeometry();
+  return { x: cx, y: cy };
+}
+
+function normalizeVector(vector) {
+  const magnitude = Math.hypot(vector.x, vector.y);
+  if (magnitude <= 1e-9) {
+    return { x: 1, y: 0 };
+  }
+  return { x: vector.x / magnitude, y: vector.y / magnitude };
+}
+
+function rotateVector(vector, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: vector.x * cos - vector.y * sin,
+    y: vector.x * sin + vector.y * cos,
+  };
+}
+
+function reflectVector(vector, normal) {
+  const dot = vector.x * normal.x + vector.y * normal.y;
+  return {
+    x: vector.x - 2 * dot * normal.x,
+    y: vector.y - 2 * dot * normal.y,
+  };
+}
+
+function canvasFromLocal(local) {
+  const center = getCenterPoint();
+  return {
+    x: center.x + local.x,
+    y: center.y + local.y,
+  };
+}
+
+function getTimeToCircleCollision(positionLocal, velocityLocal, radius) {
+  const a = velocityLocal.x ** 2 + velocityLocal.y ** 2;
+  const b = 2 * (positionLocal.x * velocityLocal.x + positionLocal.y * velocityLocal.y);
+  const c = positionLocal.x ** 2 + positionLocal.y ** 2 - radius ** 2;
+  const discriminant = b ** 2 - 4 * a * c;
+
+  if (discriminant < -1e-9) {
+    return null;
+  }
+
+  const sqrtDisc = Math.sqrt(Math.max(0, discriminant));
+  const t1 = (-b - sqrtDisc) / (2 * a);
+  const t2 = (-b + sqrtDisc) / (2 * a);
+
+  let best = Number.POSITIVE_INFINITY;
+  if (t1 > COLLISION_EPSILON_SEC) {
+    best = Math.min(best, t1);
+  }
+  if (t2 > COLLISION_EPSILON_SEC) {
+    best = Math.min(best, t2);
+  }
+
+  return Number.isFinite(best) ? best : null;
+}
+
+function applyLayerRotationsForElapsed(plan, elapsedSeconds) {
+  void elapsedSeconds;
+  state.layerRotations = [...plan.initialLayerRotations];
+}
+
+async function animateLayersIntoStartRotation(plan) {
   const fullTurn = Math.PI * 2;
-  const startRotation = state.layerRotations[layerIndex];
-  const startNorm = normalizeAngle(startRotation);
-  const stopNorm = getWinningRotation(layer, selectedIndex);
-  const deltaToStop = normalizeAngle(stopNorm - startNorm);
-  const extraTurns = fullTurn * (3 + Math.floor(Math.random() * 3));
-  const endRotation = startRotation + extraTurns + deltaToStop;
+  const startRotations = [...state.layerRotations];
+  const layerCount = Math.max(1, state.layers.length);
+  const layerDurations = state.layers.map((_, index) => {
+    const progress = layerCount <= 1 ? 0 : index / (layerCount - 1);
+    return PRELAUNCH_INNER_LAYER_MS + (PRELAUNCH_OUTER_LAYER_MS - PRELAUNCH_INNER_LAYER_MS) * progress;
+  });
+  const endRotations = plan.initialLayerRotations.map((targetRotation, index) => {
+    const startNorm = normalizeAngle(startRotations[index] || 0);
+    const stopNorm = normalizeAngle(targetRotation);
+    const deltaToStop = normalizeAngle(stopNorm - startNorm);
+    const spinTurns = Math.max(1, Math.round(plan.preLaunchTurns[index] || 1));
+    const extraTurns = fullTurn * spinTurns;
+    return (startRotations[index] || 0) + extraTurns + deltaToStop;
+  });
+  const totalDuration = Math.max(...layerDurations, PRELAUNCH_INNER_LAYER_MS);
   const startTime = performance.now();
 
   await new Promise((resolve) => {
     const frame = (now) => {
-      const progress = Math.min((now - startTime) / SPIN_DURATION_MS, 1);
-      const eased = easeInOutCubic(progress);
-      state.layerRotations[layerIndex] =
-        startRotation + (endRotation - startRotation) * eased;
+      const elapsed = Math.min(now - startTime, totalDuration);
+      let completedLayers = 0;
+      state.layerRotations = startRotations.map((start, index) => {
+        const progress = Math.min(elapsed / layerDurations[index], 1);
+        if (progress >= 1) {
+          completedLayers += 1;
+        }
+        const eased = easeInOutCubic(progress);
+        return start + (endRotations[index] - start) * eased;
+      });
       drawWheel();
 
-      if (progress < 1) {
+      if (completedLayers < layerCount) {
         requestAnimationFrame(frame);
       } else {
-        state.layerRotations[layerIndex] = endRotation;
-        drawWheel();
         resolve();
       }
     };
@@ -540,7 +982,65 @@ async function animateLayerSpin(layerIndex, selectedIndex) {
     requestAnimationFrame(frame);
   });
 
-  return getPointerSegmentIndex(layer, state.layerRotations[layerIndex]);
+  state.layerRotations = [...plan.initialLayerRotations];
+  drawWheel();
+}
+
+function pushBallTrail(position) {
+  state.ballTrail.push({ x: position.x, y: position.y });
+  if (state.ballTrail.length > 42) {
+    state.ballTrail.shift();
+  }
+}
+
+function resetRoundVisualState() {
+  state.layerGone = state.layers.map(() => false);
+  state.latestOutcomeByLayer = state.layers.map(() => null);
+  state.segmentHitsByLayer = state.layers.map((layer) => layer.segments.map(() => 0));
+  state.upSegmentsGoneByLayer = state.layers.map((layer) => layer.segments.map(() => false));
+  state.revealState = null;
+  state.finalWinFocus = null;
+  state.breakEffect = null;
+  state.ballTrail = [];
+  state.ballVisible = true;
+  const center = getCenterPoint();
+  state.ballPosition = center;
+}
+
+function loadUpBreakTexture() {
+  const image = new Image();
+  image.decoding = "async";
+  image.crossOrigin = "anonymous";
+  image.onload = () => {
+    state.upBreakTexture = image;
+    drawWheel();
+  };
+  image.onerror = () => {
+    state.upBreakTexture = null;
+  };
+  image.src = UP_BREAK_TEXTURE_URL;
+}
+
+function drawUpTextureInSlice(image, cx, cy, inner, outer, start, end) {
+  const mid = start + (end - start) / 2;
+  const textureSize = outer * 1.85;
+  const drift = outer * 0.08;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, outer, start, end);
+  ctx.arc(cx, cy, inner, end, start, true);
+  ctx.closePath();
+  ctx.clip();
+  ctx.globalAlpha = 0.26;
+  ctx.drawImage(
+    image,
+    cx - textureSize / 2 + Math.cos(mid) * drift,
+    cy - textureSize / 2 + Math.sin(mid) * drift,
+    textureSize,
+    textureSize,
+  );
+  ctx.restore();
 }
 
 function drawLabel(text, midAngle, radius, fontSize, color = "#fef3cb", glow = false) {
@@ -549,14 +1049,14 @@ function drawLabel(text, midAngle, radius, fontSize, color = "#fef3cb", glow = f
     els.wheelCanvas.width / 2 + Math.cos(midAngle) * radius,
     els.wheelCanvas.height / 2 + Math.sin(midAngle) * radius,
   );
-  const isUpLabel = text === "UP";
-  if (!isUpLabel) {
-    ctx.rotate(midAngle + Math.PI / 2);
-  }
+
+  ctx.rotate(midAngle + Math.PI / 2);
+
   if (glow) {
-    ctx.shadowColor = "#fff1a8";
+    ctx.shadowColor = "#ffe9a8";
     ctx.shadowBlur = 14;
   }
+
   ctx.fillStyle = color;
   ctx.font = `700 ${fontSize}px "Trebuchet MS", sans-serif`;
   ctx.textAlign = "center";
@@ -567,79 +1067,102 @@ function drawLabel(text, midAngle, radius, fontSize, color = "#fef3cb", glow = f
 
 function getSegmentPalette(segment) {
   if (segment.type === "up") {
-    return { fill: "#42b6ff", label: "#ffffff" };
+    return { fill: "#3a8bff", label: "#f5f9ff" };
   }
 
   if (segment.value === state.maxWinMultiplier) {
-    return { fill: "#f2c14f", label: "#1e1200" };
+    return { fill: "#f2c14f", label: "#2a1902" };
   }
 
   if (segment.value === 0) {
-    return { fill: "#555a63", label: "#dce3ed" };
+    return { fill: "#4f5560", label: "#dbe4f0" };
   }
 
-  if (segment.value < 1.5) {
-    return { fill: "#7f8793", label: "#f3f7ff" };
-  }
-
-  if (segment.value < 4) {
-    return { fill: "#3aa0ff", label: "#041326" };
-  }
-
-  if (segment.value < 16) {
-    return { fill: "#12c2a1", label: "#052117" };
+  if (segment.value < 10) {
+    return { fill: "#12c2a1", label: "#062016" };
   }
 
   if (segment.value < 100) {
-    return { fill: "#ff7b6a", label: "#2b0902" };
+    return { fill: "#ff8f5f", label: "#2b1004" };
   }
 
   if (segment.value < 1000) {
-    return { fill: "#bf73ff", label: "#170323" };
+    return { fill: "#d9534f", label: "#2b0908" };
   }
 
-  return { fill: "#ff4e9d", label: "#290016" };
+  return { fill: "#ff3c6d", label: "#2b020e" };
 }
 
-function drawLayerPointer(cx, cy, centerRadius, ringThickness) {
-  const pointerLayer = state.roundActive ? state.activeLayerIndex : 0;
-  const tipRadius = centerRadius + pointerLayer * ringThickness + 3;
-  const baseRadius = Math.max(centerRadius - 24, tipRadius - 30);
-  const halfWidth = 11;
+function drawBreakEffect() {
+  const effect = state.breakEffect;
+  if (!effect) {
+    return;
+  }
 
-  const tipX = cx + Math.cos(POINTER_ANGLE) * tipRadius;
-  const tipY = cy + Math.sin(POINTER_ANGLE) * tipRadius;
-  const baseX = cx + Math.cos(POINTER_ANGLE) * baseRadius;
-  const baseY = cy + Math.sin(POINTER_ANGLE) * baseRadius;
-  const perpX = Math.cos(POINTER_ANGLE + Math.PI / 2);
-  const perpY = Math.sin(POINTER_ANGLE + Math.PI / 2);
+  const now = performance.now();
+  const progress = Math.min((now - effect.startTime) / effect.duration, 1);
+  const fade = 1 - progress;
+
+  for (const particle of effect.particles) {
+    const x = particle.x + particle.vx * progress + particle.ax * progress ** 2;
+    const y = particle.y + particle.vy * progress + particle.ay * progress ** 2;
+    const size = Math.max(0.8, particle.size * fade);
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, fade * particle.alpha);
+    ctx.fillStyle = particle.color;
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (progress >= 1) {
+    state.breakEffect = null;
+  }
+}
+
+function drawBall() {
+  if (!state.ballVisible) {
+    return;
+  }
+
+  if (state.ballTrail.length > 1) {
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i < state.ballTrail.length; i += 1) {
+      const point = state.ballTrail[i];
+      if (i === 0) {
+        ctx.moveTo(point.x, point.y);
+      } else {
+        ctx.lineTo(point.x, point.y);
+      }
+    }
+    ctx.strokeStyle = "rgba(255, 240, 180, 0.45)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.beginPath();
-  ctx.moveTo(tipX, tipY);
-  ctx.lineTo(baseX + perpX * halfWidth, baseY + perpY * halfWidth);
-  ctx.lineTo(baseX - perpX * halfWidth, baseY - perpY * halfWidth);
-  ctx.closePath();
-  ctx.fillStyle = "#fff2c9";
+  ctx.arc(state.ballPosition.x, state.ballPosition.y, BALL_RADIUS_PX, 0, Math.PI * 2);
+  ctx.fillStyle = "#fff3cd";
+  ctx.shadowColor = "#ffe28a";
+  ctx.shadowBlur = 18;
   ctx.fill();
-  ctx.strokeStyle = "#1a1207";
   ctx.lineWidth = 2;
+  ctx.strokeStyle = "#2b1f0a";
   ctx.stroke();
   ctx.restore();
+
 }
 
 function drawWheel() {
-  const { width, height } = els.wheelCanvas;
-  const cx = width / 2;
-  const cy = height / 2;
-  const centerRadius = 78;
-  const outerRadius = Math.min(width, height) / 2 - 16;
-  const ringThickness = (outerRadius - centerRadius) / state.layers.length;
-  const reveal = state.revealState;
+  const { width, height, cx, cy, centerRadius, outerRadius, ringThickness } = getWheelGeometry();
   const now = performance.now();
-  const displayLayerIndex = state.roundActive ? state.activeLayerIndex : 0;
-  const carnivalColors = ["#ffe97c", "#ff8352", "#7bffbe", "#82d2ff", "#ff78cf"];
   const labels = [];
+  const hasFinalWinFocus = Boolean(state.finalWinFocus);
 
   ctx.clearRect(0, 0, width, height);
 
@@ -651,141 +1174,300 @@ function drawWheel() {
   state.layers.forEach((layer, layerIndex) => {
     const inner = centerRadius + layerIndex * ringThickness + 2;
     const outer = inner + ringThickness - 5;
-    let angle = normalizeAngle(state.layerRotations[layerIndex]);
+    const rotation = normalizeAngle(state.layerRotations[layerIndex] || 0);
+    const totalWeight = getLayerTotalWeight(layer);
+    const layerRemoved = state.layerGone[layerIndex];
+    let consumedWeight = 0;
 
     layer.segments.forEach((segment, segmentIndex) => {
-      const sweep = (segment.weight / layer.totalWeight) * Math.PI * 2;
-      const start = angle;
-      const end = angle + sweep;
+      const segmentWeight = Math.max(1, segment.weight || 1);
+      const sweep = (Math.PI * 2 * segmentWeight) / totalWeight;
+      const start = rotation + (Math.PI * 2 * consumedWeight) / totalWeight;
+      const end = start + sweep;
       const palette = getSegmentPalette(segment);
-
-      const isActiveLayer = layerIndex === displayLayerIndex;
-      const isMaxWin =
-        segment.type === "mult" && segment.value === state.maxWinMultiplier;
-      const isRevealHit =
-        reveal &&
-        reveal.layerIndex === layerIndex &&
-        reveal.segmentIndex === segmentIndex;
+      const nextIndex = (segmentIndex + 1) % layer.segments.length;
+      const prevIndex = (segmentIndex - 1 + layer.segments.length) % layer.segments.length;
+      const nextSegment = layer.segments[nextIndex];
+      const prevSegment = layer.segments[prevIndex];
+      const nextWeight = Math.max(1, nextSegment?.weight || 1);
+      const nextSweep = (Math.PI * 2 * nextWeight) / totalWeight;
+      const upSegmentArmed = state.upSegmentsGoneByLayer[layerIndex]?.[segmentIndex] ?? false;
+      const reveal =
+        state.revealState &&
+        state.revealState.layerIndex === layerIndex &&
+        (state.revealState.segmentIndex === segmentIndex ||
+          (state.revealState.span > 1 &&
+            segmentIndex === (state.revealState.segmentIndex + 1) % layer.segments.length));
+      const isMaxWin = segment.type === "mult" && segment.value === state.maxWinMultiplier;
+      const mergedMaxWithNext =
+        isMaxWin &&
+        nextSegment?.type === "mult" &&
+        nextSegment.value === state.maxWinMultiplier;
+      const mergedMaxWithPrev =
+        isMaxWin &&
+        prevSegment?.type === "mult" &&
+        prevSegment.value === state.maxWinMultiplier;
+      const mergedMaxEnd = mergedMaxWithNext ? end + nextSweep : end;
+      const focusSpan = hasFinalWinFocus ? Math.max(1, state.finalWinFocus.span || 1) : 1;
+      const isFocusedSegment =
+        hasFinalWinFocus &&
+        state.finalWinFocus.layerIndex === layerIndex &&
+        (segmentIndex === state.finalWinFocus.segmentIndex ||
+          (focusSpan > 1 &&
+            segmentIndex === (state.finalWinFocus.segmentIndex + 1) % layer.segments.length));
 
       ctx.beginPath();
       ctx.arc(cx, cy, outer, start, end);
       ctx.arc(cx, cy, inner, end, start, true);
       ctx.closePath();
-      ctx.fillStyle = palette.fill;
+
+      if (layerRemoved) {
+        ctx.fillStyle = "rgba(8, 8, 12, 0.6)";
+      } else if (segment.type === "up" && upSegmentArmed) {
+        ctx.fillStyle = "rgba(7, 10, 18, 0.88)";
+      } else {
+        ctx.fillStyle = palette.fill;
+      }
       ctx.fill();
 
-      if (!isActiveLayer && !isMaxWin) {
+      if (!layerRemoved && segment.type === "up" && !upSegmentArmed && state.upBreakTexture) {
+        drawUpTextureInSlice(state.upBreakTexture, cx, cy, inner, outer, start, end);
+      }
+
+      if (hasFinalWinFocus && !isFocusedSegment) {
         ctx.save();
-        ctx.globalAlpha = 0.5;
-        ctx.fillStyle = "#0b0911";
+        ctx.globalAlpha = 0.78;
+        ctx.fillStyle = "#06080d";
         ctx.fill();
         ctx.restore();
       }
 
-      if (isMaxWin) {
+      if (isMaxWin && !layerRemoved && !mergedMaxWithPrev) {
+        const pulse = 0.52 + 0.48 * (0.5 + Math.sin(now / 170) * 0.5);
         ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, outer, start, mergedMaxEnd);
+        ctx.arc(cx, cy, inner, mergedMaxEnd, start, true);
+        ctx.closePath();
         ctx.shadowColor = "#ffe98f";
-        ctx.shadowBlur = 16;
-        ctx.strokeStyle = "#fff2b4";
-        ctx.lineWidth = 3;
+        ctx.shadowBlur = 20 + pulse * 8;
+        ctx.strokeStyle = "#fff7ce";
+        ctx.lineWidth = 4.4;
+        ctx.stroke();
+        ctx.strokeStyle = "#ffd96f";
+        ctx.lineWidth = 2.1;
         ctx.stroke();
         ctx.restore();
       }
 
-      if (isRevealHit) {
-        const pulse = 0.45 + 0.55 * (0.5 + Math.sin((now - reveal.startTime) / 70) * 0.5);
+      if (reveal) {
+        const pulse = 0.45 + 0.55 * (0.5 + Math.sin((now - state.revealState.startTime) / 80) * 0.5);
         ctx.save();
-        ctx.globalAlpha = 0.32 + pulse * 0.25;
+        ctx.globalAlpha = 0.3 + pulse * 0.25;
         ctx.fillStyle = "#fff7cc";
         ctx.fill();
         ctx.restore();
 
         ctx.save();
-        if (reveal.carnival) {
-          const colorIndex = Math.floor((now - reveal.startTime) / 95) % carnivalColors.length;
-          ctx.shadowColor = carnivalColors[colorIndex];
-          ctx.shadowBlur = 20;
-          ctx.strokeStyle = carnivalColors[colorIndex];
-          ctx.lineWidth = 6;
-        } else {
-          ctx.shadowColor = "#fff6c8";
-          ctx.shadowBlur = 14;
-          ctx.strokeStyle = "#fff6c8";
-          ctx.lineWidth = 5;
-        }
+        ctx.shadowColor = state.revealState.carnival ? "#ffef92" : "#d9efff";
+        ctx.shadowBlur = state.revealState.carnival ? 20 : 12;
+        ctx.strokeStyle = state.revealState.carnival ? "#ffef92" : "#d9efff";
+        ctx.lineWidth = 5;
         ctx.stroke();
         ctx.restore();
       }
 
+      const skipStartBorder = mergedMaxWithPrev;
+      const skipEndBorder = mergedMaxWithNext;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, outer, start, end);
+      if (!skipEndBorder) {
+        ctx.lineTo(cx + Math.cos(end) * inner, cy + Math.sin(end) * inner);
+      }
+      ctx.arc(cx, cy, inner, end, start, true);
+      if (!skipStartBorder) {
+        ctx.lineTo(cx + Math.cos(start) * outer, cy + Math.sin(start) * outer);
+      }
       ctx.strokeStyle = "#1b1307";
       ctx.lineWidth = 3;
       ctx.stroke();
+      ctx.restore();
 
-      const mid = start + sweep / 2;
-      const labelRadius = (inner + outer) / 2;
-      const labelFont = Math.max(8, Math.min(14, ringThickness * 0.33));
+      if (!layerRemoved && segment.type === "up" && upSegmentArmed) {
+        const inset = Math.max(3, ringThickness * 0.11);
+        const borderOuter = Math.max(inner + inset + 1, outer - inset);
+        const borderInner = inner + inset;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, borderOuter, start + 0.012, end - 0.012);
+        ctx.arc(cx, cy, borderInner, end - 0.012, start + 0.012, true);
+        ctx.closePath();
+        ctx.shadowColor = "rgba(91, 176, 255, 0.78)";
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = "rgba(126, 198, 255, 0.98)";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.restore();
+      }
 
-      if (sweep >= 0.12) {
-        const labelColor =
-          !isActiveLayer && !isMaxWin
-            ? "rgba(245, 234, 210, 0.55)"
-            : palette.label;
+      const hitCount = state.segmentHitsByLayer[layerIndex]?.[segmentIndex] ?? 0;
+      if (
+        !layerRemoved &&
+        segment.type === "mult" &&
+        hitCount > 0 &&
+        hitCount < SEGMENT_HITS_TO_BREAK
+      ) {
+        const inset = Math.max(3, ringThickness * 0.11);
+        const borderOuter = Math.max(inner + inset + 1, outer - inset);
+        const borderInner = inner + inset;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, borderOuter, start + 0.015, end - 0.015);
+        ctx.arc(cx, cy, borderInner, end - 0.015, start + 0.015, true);
+        ctx.closePath();
+        ctx.shadowColor = "rgba(255, 255, 255, 0.6)";
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
+        ctx.lineWidth = 2.4;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (hasFinalWinFocus && isFocusedSegment) {
+        ctx.save();
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = "#fff7cf";
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.shadowColor = "#fff0a1";
+        ctx.shadowBlur = 22;
+        ctx.strokeStyle = "#fff6bb";
+        ctx.lineWidth = 4.2;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (
+        !layerRemoved &&
+        sweep >= 0.11 &&
+        !mergedMaxWithPrev &&
+        (!hasFinalWinFocus || isFocusedSegment)
+      ) {
+        const mid = start + sweep / 2;
+        const labelRadius = (inner + outer) / 2;
+        const labelFont = Math.max(8, Math.min(14, ringThickness * 0.33));
+        const maxWinLabelScale = segment.value === state.maxWinMultiplier ? 1.65 : 1;
         labels.push({
           text: segment.label,
-          angle: mid,
+          angle: mergedMaxWithNext ? start + (sweep + nextSweep) / 2 : mid,
           radius: labelRadius,
-          font: isMaxWin ? labelFont * 1.34 : labelFont,
-          color: labelColor,
+          font: isMaxWin
+            ? labelFont * (mergedMaxWithNext ? maxWinLabelScale * 1.18 : maxWinLabelScale)
+            : labelFont,
+          color: palette.label,
           glow: isMaxWin,
         });
       }
 
-      const latest = state.latestOutcomeByLayer[layerIndex];
-      if (latest && latest.segmentIndex === segmentIndex && !isRevealHit) {
-        const pulseRadius = (inner + outer) / 2;
-        ctx.beginPath();
-        ctx.arc(cx, cy, pulseRadius, mid - 0.09, mid + 0.09);
-        ctx.strokeStyle = "#fff7de";
-        ctx.lineWidth = 4;
-        ctx.stroke();
-      }
+      consumedWeight += segmentWeight;
 
-      angle += sweep;
     });
 
+    if (layerRemoved) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, (inner + outer) / 2, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(170, 180, 198, 0.5)";
+      ctx.setLineDash([6, 8]);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
   });
 
   ctx.beginPath();
   ctx.arc(cx, cy, centerRadius - 8, 0, Math.PI * 2);
-      ctx.fillStyle = "#20160a";
+  ctx.fillStyle = "#20160a";
   ctx.fill();
   ctx.strokeStyle = "#f0cb6a";
   ctx.lineWidth = 3;
   ctx.stroke();
 
-  for (const label of labels) {
+  labels.forEach((label) => {
     drawLabel(label.text, label.angle, label.radius, label.font, label.color, label.glow);
-  }
+  });
 
-  drawLayerPointer(cx, cy, centerRadius, ringThickness);
+  drawBreakEffect();
+  drawBall();
 }
 
-async function playLandingReveal(layerIndex, segmentIndex, isCarnival) {
-  const duration = isCarnival ? CARNIVAL_REVEAL_MS : LANDING_REVEAL_MS;
+async function animateBallSegment(startLocal, endLocal, durationSec, plan, elapsedStartSec) {
+  const durationMs = Math.max(16, durationSec * 1000);
   const startTime = performance.now();
-  const endTime = startTime + duration;
-
-  state.revealState = {
-    layerIndex,
-    segmentIndex,
-    startTime,
-    carnival: isCarnival,
-  };
 
   await new Promise((resolve) => {
     const frame = (now) => {
+      const progress = Math.min((now - startTime) / durationMs, 1);
+      const local = {
+        x: startLocal.x + (endLocal.x - startLocal.x) * progress,
+        y: startLocal.y + (endLocal.y - startLocal.y) * progress,
+      };
+
+      applyLayerRotationsForElapsed(plan, elapsedStartSec + durationSec * progress);
+      state.ballPosition = canvasFromLocal(local);
+      pushBallTrail(state.ballPosition);
       drawWheel();
-      if (now < endTime) {
+
+      if (progress < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        resolve();
+      }
+    };
+
+    requestAnimationFrame(frame);
+  });
+}
+
+function startLayerBreakEffect(event) {
+  const { cx, cy } = getWheelGeometry();
+  const impactCanvas = canvasFromLocal(event.endLocal);
+  const particles = [];
+  const particleCount = 24;
+
+  for (let i = 0; i < particleCount; i += 1) {
+    const t = i / particleCount;
+    const angle = event.impactAngle + (t - 0.5) * Math.PI * 1.35;
+    const speed = 42 + (i % 5) * 14;
+    particles.push({
+      x: impactCanvas.x,
+      y: impactCanvas.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      ax: (impactCanvas.x - cx) * 0.03,
+      ay: (impactCanvas.y - cy) * 0.03,
+      size: 1.6 + (i % 4) * 0.8,
+      alpha: 0.75 + (i % 3) * 0.08,
+      color: i % 2 === 0 ? "#9fd6ff" : "#e8f4ff",
+    });
+  }
+
+  state.breakEffect = {
+    startTime: performance.now(),
+    duration: BREAK_EFFECT_MS,
+    particles,
+  };
+}
+
+async function playBreakEffect(plan, elapsedStartSec) {
+  const startTime = performance.now();
+  await new Promise((resolve) => {
+    const frame = (now) => {
+      const progress = Math.min((now - startTime) / BREAK_EFFECT_MS, 1);
+      applyLayerRotationsForElapsed(plan, elapsedStartSec + (BREAK_EFFECT_MS / 1000) * progress);
+      drawWheel();
+      if (progress < 1) {
         requestAnimationFrame(frame);
       } else {
         resolve();
@@ -793,16 +1475,61 @@ async function playLandingReveal(layerIndex, segmentIndex, isCarnival) {
     };
     requestAnimationFrame(frame);
   });
+  return BREAK_EFFECT_MS / 1000;
+}
+
+async function playLandingReveal(event, plan, elapsedStartSec) {
+  const isCarnival =
+    event.segment.type === "mult" &&
+    (event.segment.value >= 50 || event.segment.value === state.maxWinMultiplier);
+  const duration = isCarnival ? BIG_REVEAL_MS : LANDING_REVEAL_MS;
+  const startTime = performance.now();
+  let revealSegmentIndex = event.segmentIndex;
+  let revealSpan = 1;
+  const revealLayer = state.layers[event.layerIndex];
+  if (
+    revealLayer &&
+    event.segment.type === "mult" &&
+    event.segment.value === state.maxWinMultiplier
+  ) {
+    const nextIndex = (event.segmentIndex + 1) % revealLayer.segments.length;
+    const prevIndex = (event.segmentIndex - 1 + revealLayer.segments.length) % revealLayer.segments.length;
+    const nextSegment = revealLayer.segments[nextIndex];
+    const prevSegment = revealLayer.segments[prevIndex];
+    if (nextSegment?.type === "mult" && nextSegment.value === state.maxWinMultiplier) {
+      revealSpan = 2;
+    } else if (prevSegment?.type === "mult" && prevSegment.value === state.maxWinMultiplier) {
+      revealSegmentIndex = prevIndex;
+      revealSpan = 2;
+    }
+  }
+
+  state.revealState = {
+    layerIndex: event.layerIndex,
+    segmentIndex: revealSegmentIndex,
+    span: revealSpan,
+    startTime,
+    carnival: isCarnival,
+  };
+
+  await new Promise((resolve) => {
+    const frame = (now) => {
+      const progress = Math.min((now - startTime) / duration, 1);
+      applyLayerRotationsForElapsed(plan, elapsedStartSec + (duration / 1000) * progress);
+      drawWheel();
+      if (now < startTime + duration) {
+        requestAnimationFrame(frame);
+      } else {
+        resolve();
+      }
+    };
+
+    requestAnimationFrame(frame);
+  });
 
   state.revealState = null;
   drawWheel();
-}
-
-function resetRoundState() {
-  state.roundActive = false;
-  state.activeLayerIndex = 0;
-  state.latestOutcomeByLayer = state.layers.map(() => null);
-  state.revealState = null;
+  return duration / 1000;
 }
 
 function canAffordCurrentBet() {
@@ -810,14 +1537,13 @@ function canAffordCurrentBet() {
 }
 
 async function beginStakeRound() {
-  const before = state.balance.amount;
   const response = await state.client.Play({
     amount: state.betAmount,
     mode: "base",
   });
+
   state.liveRound = response.round;
   state.balance = response.balance;
-  return before;
 }
 
 async function endStakeRound() {
@@ -840,7 +1566,7 @@ function applySimulationPayout(multiplier) {
   state.lastWinAmount = payoutAmount;
   state.lastResolvedMultiplier = multiplier;
 
-  if (multiplier > 10) {
+  if (multiplier >= 20) {
     animateDisplayedWin(payoutAmount, 1450, true);
   } else {
     state.displayedWinAmount = payoutAmount;
@@ -849,58 +1575,543 @@ function applySimulationPayout(multiplier) {
   }
 }
 
-function handleUpOutcome(layerName) {
-  const nextLayer = state.activeLayerIndex + 1;
-  if (nextLayer >= state.layers.length) {
-    const fallback = state.maxWinMultiplier;
-    applySimulationPayout(fallback);
-    resetRoundState();
-    els.roundText.textContent = `${layerName}: UP forced max payout ${formatMultiplier(fallback)}.`;
+async function simulateSpins(count) {
+  if (!Number.isFinite(count) || count <= 0) {
     return;
   }
-  state.activeLayerIndex = nextLayer;
-  const nextName = state.layers[nextLayer].name;
-  els.roundText.textContent = `${layerName}: UP hit. Press spin for ${nextName}.`;
+  if (state.spinning || state.roundActive) {
+    setStatus("Wait for the current launch to finish before simulation.");
+    return;
+  }
+
+  setSpinDisabled(true);
+  const localTop = [];
+  const baseNonce = state.provablyFair.nonce + state.simulationNonceCursor;
+  let processedSpins = 0;
+  let totalSimulatedReturn = 0;
+  let totalSimulatedWager = 0;
+
+  try {
+    setSimulationStatus(
+      state.mode === "stake"
+        ? `Simulating ${count} local preview spins (Stake payout is not affected)...`
+        : `Simulating ${count} spins...`,
+    );
+    state.simulationLastBatch = null;
+    state.simulationTopWins = [];
+    renderSimulationTopWins([]);
+    updateSimulationReplayUi();
+
+    for (let i = 0; i < count; i += 1) {
+      const plan = await buildRoundPlan(baseNonce + i);
+      processedSpins += 1;
+      const multiplier = plan.winner.segment.value;
+      const winAmount = Math.floor(state.betAmount * multiplier);
+      totalSimulatedReturn += winAmount;
+      totalSimulatedWager += state.betAmount;
+      const layerName = state.layers[plan.winner.layerIndex]?.name ?? "Unknown Layer";
+
+      recordSimulationTopWin(localTop, {
+        spin: i + 1,
+        multiplier,
+        winAmount,
+        layerName,
+      });
+
+      if ((i + 1) % 25 === 0 || i === count - 1) {
+        state.simulationTopWins = [...localTop];
+        renderSimulationTopWins();
+        setSimulationStatus(`Simulating ${count} spins... ${i + 1}/${count}`);
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+    }
+
+    state.simulationTopWins = [...localTop];
+    state.simulationLastBatch = {
+      baseNonce,
+      count: processedSpins,
+    };
+    renderSimulationTopWins();
+
+    const best = localTop[0];
+    if (els.simReplayInput && best) {
+      els.simReplayInput.value = String(best.spin);
+    }
+    updateSimulationReplayUi();
+    if (best) {
+      const net = totalSimulatedReturn - totalSimulatedWager;
+      setSimulationStatus(
+        `Done ${count} spins. Best: ${formatMultiplier(best.multiplier)} on spin ${best.spin}. Net: ${formatSignedMoney(net)} (${formatMoney(totalSimulatedReturn)} return vs ${formatMoney(totalSimulatedWager)} wager).`,
+      );
+      setSimulationReplayHint(`Batch ready. Replays available for spins 1-${processedSpins}.`);
+    } else {
+      setSimulationStatus(`Done ${count} spins.`);
+      setSimulationReplayHint("Batch complete but no replayable spins were found.");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    state.simulationLastBatch = null;
+    updateSimulationReplayUi();
+    setSimulationStatus(`Simulation failed: ${message}`);
+  } finally {
+    state.simulationNonceCursor += processedSpins;
+    setSpinDisabled(false);
+    updateHud();
+  }
 }
 
-async function spinActiveLayer() {
-  const layerIndex = state.activeLayerIndex;
-  const layer = state.layers[layerIndex];
-  const pickIndex = weightedPick(layer.segments);
-  const landedIndex = await animateLayerSpin(layerIndex, pickIndex);
-  const selected = layer.segments[landedIndex];
-  state.latestOutcomeByLayer[layerIndex] = { segmentIndex: landedIndex };
-
-  if (selected.type === "up") {
-    els.roundText.textContent = `${layer.name}: landed UP.`;
-    await playLandingReveal(layerIndex, landedIndex, false);
-    handleUpOutcome(layer.name);
+async function replaySimulationSpin(spinOverride) {
+  if (state.spinning || state.roundActive) {
+    setStatus("Wait for the current launch to finish before replay.");
     return;
   }
 
-  state.lastResolvedMultiplier = selected.value;
-  const carnivalWin = selected.value >= 10 || selected.value === state.maxWinMultiplier;
-  els.roundText.textContent = `${layer.name}: landed ${selected.label}.`;
-  await playLandingReveal(layerIndex, landedIndex, carnivalWin);
-
-  if (state.mode === "simulation") {
-    applySimulationPayout(selected.value);
-  } else {
-    const settlementWin = await endStakeRound();
-    state.lastWinAmount = settlementWin;
-    if (selected.value > 10 || settlementWin > state.betAmount * 10) {
-      animateDisplayedWin(settlementWin, 1450, true);
-    } else {
-      state.displayedWinAmount = settlementWin;
-      els.winText.textContent = formatMoney(state.displayedWinAmount);
-      replayClass(els.winText, "win-pop");
-    }
+  const batch = state.simulationLastBatch;
+  if (!batch || batch.count < 1) {
+    setSimulationStatus("Run a simulation batch first, then replay a specific spin.");
+    updateSimulationReplayUi();
+    return;
   }
 
-  resetRoundState();
-  els.roundText.textContent = `${layer.name}: won ${formatMoney(
-    state.lastWinAmount,
-  )} (${selected.label}). Round complete.`;
+  const requestedSpin = Number.parseInt(
+    Number.isFinite(spinOverride) ? String(spinOverride) : els.simReplayInput?.value || "",
+    10,
+  );
+
+  if (!Number.isFinite(requestedSpin) || requestedSpin < 1 || requestedSpin > batch.count) {
+    setSimulationReplayHint(`Pick a spin from 1 to ${batch.count}.`);
+    updateSimulationReplayUi();
+    return;
+  }
+
+  const spinNumber = requestedSpin;
+  const replayNonce = batch.baseNonce + (spinNumber - 1);
+
+  setSpinDisabled(true);
+  state.roundActive = true;
+
+  try {
+    clearWinAnimation();
+    resetRoundVisualState();
+    state.activeLayerIndex = 0;
+
+    const plan = await buildRoundPlan(replayNonce);
+    const winningMultiplier = plan.winner.segment.value;
+    const layerName = state.layers[plan.winner.layerIndex]?.name ?? "Unknown Layer";
+
+    state.lastResolvedMultiplier = winningMultiplier;
+    state.lastWinAmount = Math.floor(state.betAmount * winningMultiplier);
+    state.displayedWinAmount = state.lastWinAmount;
+    els.winText.textContent = formatMoney(state.displayedWinAmount);
+    replayClass(els.winText, "win-pop");
+
+    els.roundText.textContent = `Replay spin ${spinNumber}/${batch.count}: locking ring start positions...`;
+    updateHud();
+    drawWheel();
+    await animateLayersIntoStartRotation(plan);
+
+    els.roundText.textContent = `Replay spin ${spinNumber}/${batch.count}: ball launched from center.`;
+    updateHud();
+    drawWheel();
+    await playRoundPlan(plan);
+
+    state.activeLayerIndex = 0;
+    setStatus("Replay complete (preview only, no balance change).");
+    setSimulationStatus(
+      `Replayed spin ${spinNumber}/${batch.count}: ${formatMultiplier(winningMultiplier)} on ${layerName}.`,
+    );
+    if (els.simReplayInput) {
+      els.simReplayInput.value = String(spinNumber);
+    }
+    updateSimulationReplayUi();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setStatus(`Replay failed: ${message}`);
+  } finally {
+    state.roundActive = false;
+    state.activeLayerIndex = 0;
+    updateHud();
+    drawWheel();
+    setSpinDisabled(false);
+  }
+}
+
+async function buildRoundPlan(nonceOverride = state.provablyFair.nonce) {
+  const nonce = nonceOverride;
+  const { material, rolls } = await createFairRolls(
+    state.provablyFair.serverSeed,
+    state.provablyFair.clientSeed,
+    nonce,
+    FAIR_ROLL_COUNT,
+  );
+
+  let cursor = 0;
+  const nextRoll = () => {
+    const roll = rolls[cursor % rolls.length];
+    cursor += 1;
+    return roll;
+  };
+
+  const initialLayerRotations = state.layers.map(() => normalizeAngle(nextRoll() * Math.PI * 2));
+  const preLaunchTurns = state.layers.map(
+    () => PRELAUNCH_MIN_TURNS + nextRoll() * (PRELAUNCH_MAX_TURNS - PRELAUNCH_MIN_TURNS),
+  );
+  const geometry = getWheelGeometry();
+  const activeRadii = state.layers.map(
+    (_, index) =>
+      geometry.centerRadius + index * geometry.ringThickness + 2 - BALL_RADIUS_PX,
+  );
+
+  const layerGone = state.layers.map(() => false);
+  const segmentHits = state.layers.map((layer) => layer.segments.map(() => 0));
+  const upSegmentsGone = state.layers.map((layer) => layer.segments.map(() => false));
+  const collisions = [];
+  let elapsedSeconds = 0;
+  let winnerEvent = null;
+
+  const launchAngle = normalizeAngle(nextRoll() * Math.PI * 2);
+  let positionLocal = { x: 0, y: 0 };
+  let visualStartLocal = { x: 0, y: 0 };
+  let velocityLocal = {
+    x: Math.cos(launchAngle) * BALL_SPEED_PX_PER_SEC,
+    y: Math.sin(launchAngle) * BALL_SPEED_PX_PER_SEC,
+  };
+
+  let guard = 0;
+  while (!winnerEvent && guard < MAX_COLLISIONS_PER_ROUND) {
+    guard += 1;
+
+    const layerIndex = getCurrentActiveLayerIndex(layerGone);
+    const layer = state.layers[layerIndex];
+    const activeRadius = activeRadii[layerIndex];
+
+    let hitTime = getTimeToCircleCollision(positionLocal, velocityLocal, activeRadius);
+    if (!hitTime) {
+      const radialDistance = Math.hypot(positionLocal.x, positionLocal.y);
+      const radialNormal =
+        radialDistance > 1e-6
+          ? { x: positionLocal.x / radialDistance, y: positionLocal.y / radialDistance }
+          : normalizeVector(velocityLocal);
+      const tangent = { x: -radialNormal.y, y: radialNormal.x };
+      const tangentBias = (nextRoll() - 0.5) * 0.36;
+      const correctedDirection = normalizeVector({
+        x: -radialNormal.x + tangent.x * tangentBias,
+        y: -radialNormal.y + tangent.y * tangentBias,
+      });
+      velocityLocal = {
+        x: correctedDirection.x * BALL_SPEED_PX_PER_SEC,
+        y: correctedDirection.y * BALL_SPEED_PX_PER_SEC,
+      };
+
+      const clampedRadius = Math.max(0, Math.min(activeRadius - 0.25, radialDistance));
+      positionLocal = {
+        x: radialNormal.x * clampedRadius,
+        y: radialNormal.y * clampedRadius,
+      };
+      hitTime = getTimeToCircleCollision(positionLocal, velocityLocal, activeRadius);
+    }
+    if (!hitTime) {
+      const bias = nextRoll() - 0.5;
+      const emergencyDirection = normalizeVector({
+        x: -positionLocal.x + bias * 0.01,
+        y: -positionLocal.y - bias * 0.01,
+      });
+      velocityLocal = {
+        x: emergencyDirection.x * BALL_SPEED_PX_PER_SEC,
+        y: emergencyDirection.y * BALL_SPEED_PX_PER_SEC,
+      };
+      hitTime = COLLISION_EPSILON_SEC * 2;
+    }
+
+    const impactLocal = {
+      x: positionLocal.x + velocityLocal.x * hitTime,
+      y: positionLocal.y + velocityLocal.y * hitTime,
+    };
+    elapsedSeconds += hitTime;
+
+    const impactAngle = normalizeAngle(Math.atan2(impactLocal.y, impactLocal.x));
+    const rotationAtImpact = initialLayerRotations[layerIndex];
+    const segmentIndex = getSegmentIndexFromAngle(layer, impactAngle, rotationAtImpact);
+    const segment = layer.segments[segmentIndex];
+    const travelDistance = Math.hypot(
+      impactLocal.x - visualStartLocal.x,
+      impactLocal.y - visualStartLocal.y,
+    );
+    const travelSeconds = travelDistance / BALL_SPEED_PX_PER_SEC;
+    const hitsBefore = segmentHits[layerIndex][segmentIndex];
+    let hitsAfter = hitsBefore;
+    let brokeSegment = false;
+    let brokeLayer = false;
+    let isWinningHit = false;
+    let passThroughUp = false;
+    let armedUpOnHit = false;
+
+    if (segment.type === "up") {
+      if (upSegmentsGone[layerIndex][segmentIndex]) {
+        hitsAfter = SEGMENT_HITS_TO_BREAK;
+        segmentHits[layerIndex][segmentIndex] = hitsAfter;
+        brokeSegment = true;
+        passThroughUp = true;
+        brokeLayer = true;
+      } else {
+        hitsAfter = 1;
+        segmentHits[layerIndex][segmentIndex] = hitsAfter;
+        upSegmentsGone[layerIndex][segmentIndex] = true;
+        armedUpOnHit = true;
+      }
+    } else {
+      hitsAfter = Math.min(SEGMENT_HITS_TO_BREAK, hitsBefore + 1);
+      segmentHits[layerIndex][segmentIndex] = hitsAfter;
+      brokeSegment = hitsAfter >= SEGMENT_HITS_TO_BREAK;
+      isWinningHit = brokeSegment;
+    }
+
+    const event = {
+      layerIndex,
+      segmentIndex,
+      segment,
+      impactAngle,
+      startLocal: { ...visualStartLocal },
+      endLocal: { ...impactLocal },
+      travelSeconds,
+      impactTimeSeconds: elapsedSeconds,
+      hitsBefore,
+      hitsAfter,
+      brokeSegment,
+      brokeLayer,
+      isWinningHit,
+      passThroughUp,
+      armedUpOnHit,
+    };
+
+    if (brokeLayer) {
+      layerGone[layerIndex] = true;
+    }
+
+    if (isWinningHit) {
+      winnerEvent = event;
+    } else if (passThroughUp) {
+      // Keep trajectory unchanged while the armed UP segment burns the layer.
+    } else {
+      const normal = normalizeVector(impactLocal);
+      const reflected = reflectVector(velocityLocal, normal);
+      const jitter = (nextRoll() - 0.5) * 2 * REFLECT_JITTER_MAX_RAD;
+      const sway = (nextRoll() - 0.5) * 2 * REFLECT_SWAY_MAX_RAD;
+      const reflectedDirection = normalizeVector(rotateVector(reflected, jitter + sway));
+      const inwardDot = reflectedDirection.x * normal.x + reflectedDirection.y * normal.y;
+      let safeDirection = reflectedDirection;
+      if (inwardDot > -0.02) {
+        const tangent = { x: -normal.y, y: normal.x };
+        const tangentSign = nextRoll() < 0.5 ? -1 : 1;
+        safeDirection = normalizeVector({
+          x: -normal.x * 0.92 + tangent.x * tangentSign * 0.38,
+          y: -normal.y * 0.92 + tangent.y * tangentSign * 0.38,
+        });
+      }
+      velocityLocal = {
+        x: safeDirection.x * BALL_SPEED_PX_PER_SEC,
+        y: safeDirection.y * BALL_SPEED_PX_PER_SEC,
+      };
+    }
+
+    collisions.push(event);
+    visualStartLocal = { ...impactLocal };
+    positionLocal = {
+      x: impactLocal.x + velocityLocal.x * COLLISION_EPSILON_SEC,
+      y: impactLocal.y + velocityLocal.y * COLLISION_EPSILON_SEC,
+    };
+  }
+
+  if (!winnerEvent) {
+    const fallbackLayerIndex = getCurrentActiveLayerIndex(layerGone);
+    const fallbackLayer = state.layers[fallbackLayerIndex];
+    const fallbackAngle = normalizeAngle(Math.atan2(positionLocal.y, positionLocal.x));
+    const multiplierIndexes = fallbackLayer.segments
+      .map((segment, index) => (segment.type === "mult" ? index : -1))
+      .filter((index) => index >= 0);
+
+    const safeMultiplierIndexes =
+      multiplierIndexes.length > 0
+        ? multiplierIndexes
+        : state.layers[0].segments
+            .map((segment, index) => (segment.type === "mult" ? index : -1))
+            .filter((index) => index >= 0);
+
+    const chosenIndex =
+      safeMultiplierIndexes[Math.floor(nextRoll() * safeMultiplierIndexes.length) % safeMultiplierIndexes.length];
+    const chosenSegment =
+      multiplierIndexes.length > 0
+        ? fallbackLayer.segments[chosenIndex]
+        : state.layers[0].segments[chosenIndex];
+    const fallbackEvent = {
+      layerIndex: multiplierIndexes.length > 0 ? fallbackLayerIndex : 0,
+      segmentIndex: chosenIndex,
+      segment: chosenSegment,
+      impactAngle: fallbackAngle,
+      startLocal: { ...visualStartLocal },
+      endLocal: { ...positionLocal },
+      travelSeconds: 0,
+      impactTimeSeconds: elapsedSeconds,
+      hitsBefore: SEGMENT_HITS_TO_BREAK - 1,
+      hitsAfter: SEGMENT_HITS_TO_BREAK,
+      brokeSegment: true,
+      brokeLayer: false,
+      isWinningHit: true,
+      passThroughUp: false,
+      armedUpOnHit: false,
+    };
+    collisions.push(fallbackEvent);
+    winnerEvent = fallbackEvent;
+  }
+
+  if (collisions.length === 0) {
+    const fallbackLayer = state.layers[0];
+    const fallbackIndex = Math.max(
+      0,
+      fallbackLayer.segments.findIndex((segment) => segment.type === "mult"),
+    );
+    const fallbackSegment = fallbackLayer.segments[fallbackIndex];
+    const fallbackEvent = {
+      layerIndex: 0,
+      segmentIndex: fallbackIndex,
+      segment: fallbackSegment,
+      impactAngle: 0,
+      startLocal: { x: 0, y: 0 },
+      endLocal: { x: 0, y: 0 },
+      travelSeconds: 0,
+      impactTimeSeconds: 0,
+      hitsBefore: SEGMENT_HITS_TO_BREAK - 1,
+      hitsAfter: SEGMENT_HITS_TO_BREAK,
+      brokeSegment: true,
+      brokeLayer: false,
+      isWinningHit: true,
+      passThroughUp: false,
+      armedUpOnHit: false,
+    };
+    collisions.push(fallbackEvent);
+    winnerEvent = fallbackEvent;
+  }
+
+  const roundHash = await sha256Hex(`${material}:round`);
+
+  return {
+    nonce,
+    roundHash,
+    material,
+    initialLayerRotations,
+    preLaunchTurns,
+    collisions,
+    winner: winnerEvent,
+  };
+}
+
+async function playRoundPlan(plan) {
+  state.layerRotations = [...plan.initialLayerRotations];
+  state.layerGone = state.layers.map(() => false);
+  state.latestOutcomeByLayer = state.layers.map(() => null);
+  state.segmentHitsByLayer = state.layers.map((layer) => layer.segments.map(() => 0));
+  state.upSegmentsGoneByLayer = state.layers.map((layer) => layer.segments.map(() => false));
+  state.revealState = null;
+  state.ballTrail = [];
+  state.ballVisible = true;
+  state.activeLayerIndex = 0;
+  state.ballPosition = canvasFromLocal({ x: 0, y: 0 });
+  let elapsedSeconds = 0;
+  drawWheel();
+
+  for (const event of plan.collisions) {
+    state.activeLayerIndex = event.layerIndex;
+    const layerName = state.layers[event.layerIndex].name;
+
+    if (event.isWinningHit) {
+      els.roundText.textContent = `${layerName}: ${event.segment.label} is about to shatter...`;
+    } else if (event.passThroughUp) {
+      els.roundText.textContent = `${layerName}: UP hit again, layer is breaking...`;
+    } else if (event.segment.type === "up") {
+      els.roundText.textContent = `${layerName}: UP segment primed. Next UP hit burns this layer.`;
+    } else {
+      els.roundText.textContent = `${layerName}: ${event.segment.label} lit (${event.hitsAfter}/${SEGMENT_HITS_TO_BREAK}).`;
+    }
+
+    updateHud();
+    const layerSpeedScale = getLayerTravelTimeScale(event.layerIndex, state.layers.length);
+    const shatterScale = event.isWinningHit ? FINAL_HIT_SLOW_FACTOR : 1;
+    const travelScale = layerSpeedScale * shatterScale;
+    await animateBallSegment(
+      event.startLocal,
+      event.endLocal,
+      event.travelSeconds * travelScale,
+      plan,
+      elapsedSeconds,
+    );
+    elapsedSeconds += event.travelSeconds * travelScale;
+
+    state.segmentHitsByLayer[event.layerIndex][event.segmentIndex] = event.hitsAfter;
+    if (event.armedUpOnHit) {
+      state.upSegmentsGoneByLayer[event.layerIndex][event.segmentIndex] = true;
+    }
+    if (event.isWinningHit) {
+      const focus = {
+        layerIndex: event.layerIndex,
+        segmentIndex: event.segmentIndex,
+        span: 1,
+      };
+      const focusLayer = state.layers[event.layerIndex];
+      const focusSegment = focusLayer?.segments[event.segmentIndex];
+      if (focusLayer && focusSegment?.type === "mult" && focusSegment.value === state.maxWinMultiplier) {
+        const nextIndex = (event.segmentIndex + 1) % focusLayer.segments.length;
+        const prevIndex = (event.segmentIndex - 1 + focusLayer.segments.length) % focusLayer.segments.length;
+        const nextSegment = focusLayer.segments[nextIndex];
+        const prevSegment = focusLayer.segments[prevIndex];
+        if (nextSegment?.type === "mult" && nextSegment.value === state.maxWinMultiplier) {
+          focus.span = 2;
+        } else if (prevSegment?.type === "mult" && prevSegment.value === state.maxWinMultiplier) {
+          focus.segmentIndex = prevIndex;
+          focus.span = 2;
+        }
+      }
+      state.finalWinFocus = focus;
+    }
+    updateHud();
+    drawWheel();
+
+    if (event.brokeLayer) {
+      state.layerGone[event.layerIndex] = true;
+      startLayerBreakEffect(event);
+      const breakSeconds = await playBreakEffect(plan, elapsedSeconds);
+      elapsedSeconds += breakSeconds;
+      state.activeLayerIndex = getCurrentActiveLayerIndex(state.layerGone);
+      const nextLayer = state.layers[state.activeLayerIndex].name;
+      els.roundText.textContent = `${layerName}: UP burned away. ${nextLayer} is now live.`;
+      updateHud();
+      drawWheel();
+      continue;
+    }
+
+    if (event.segment.type === "up") {
+      updateHud();
+      continue;
+    }
+
+    const revealSeconds = await playLandingReveal(event, plan, elapsedSeconds);
+    elapsedSeconds += revealSeconds;
+
+    if (event.isWinningHit) {
+      els.roundText.textContent = `${layerName}: ${event.segment.label} broke on hit ${SEGMENT_HITS_TO_BREAK}.`;
+      updateHud();
+      drawWheel();
+      break;
+    }
+
+    els.roundText.textContent =
+      event.segment.type === "up"
+        ? `${layerName}: UP is primed.`
+        : `${layerName}: ${event.segment.label} is lit (${event.hitsAfter}/${SEGMENT_HITS_TO_BREAK}).`;
+    updateHud();
+  }
+
+  applyLayerRotationsForElapsed(plan, elapsedSeconds);
+  drawWheel();
 }
 
 async function spinFlow() {
@@ -910,39 +2121,96 @@ async function spinFlow() {
 
   setSpinDisabled(true);
 
+  let wagerDeducted = false;
+  let roundSettled = false;
+
   try {
-    if (!state.roundActive) {
-      if (!canAffordCurrentBet()) {
-        throw new Error("Insufficient balance for current bet.");
-      }
-
-      state.lastWinAmount = 0;
-      state.displayedWinAmount = 0;
-      els.winText.textContent = formatMoney(0);
-      clearWinAnimation();
-
-      if (state.mode === "stake") {
-        await beginStakeRound();
-      } else {
-        beginSimulationRound();
-      }
-
-      state.roundActive = true;
-      state.activeLayerIndex = 0;
-      state.latestOutcomeByLayer = state.layers.map(() => null);
-      els.roundText.textContent = "Round started at Core. Spinning...";
-    } else {
-      els.roundText.textContent = `${state.layers[state.activeLayerIndex].name} spinning...`;
+    if (!canAffordCurrentBet()) {
+      throw new Error("Insufficient balance for current bet.");
     }
 
-    await spinActiveLayer();
-    setStatus(state.roundActive ? "Round active" : "Ready");
+    state.lastWinAmount = 0;
+    state.displayedWinAmount = 0;
+    els.winText.textContent = formatMoney(0);
+    clearWinAnimation();
+
+    if (state.mode === "stake") {
+      await beginStakeRound();
+    } else {
+      beginSimulationRound();
+    }
+
+    wagerDeducted = true;
+    state.roundActive = true;
+    state.activeLayerIndex = 0;
+    resetRoundVisualState();
+
+    const plan = await buildRoundPlan();
+    state.provablyFair.lastRoundHash = plan.roundHash;
+
+    els.roundText.textContent = "Locking ring start positions...";
+    updateProvablyFairPanel();
+    updateHud();
+    drawWheel();
+    await animateLayersIntoStartRotation(plan);
+
+    els.roundText.textContent = "Ball launched from center.";
+    updateHud();
+    drawWheel();
+
+    await playRoundPlan(plan);
+
+    const winningMultiplier = plan.winner.segment.value;
+    state.lastResolvedMultiplier = winningMultiplier;
+
+    if (state.mode === "simulation") {
+      applySimulationPayout(winningMultiplier);
+      roundSettled = true;
+    } else {
+      const settlementWin = await endStakeRound();
+      state.lastWinAmount = settlementWin;
+      roundSettled = true;
+
+      if (winningMultiplier >= 20 || settlementWin > state.betAmount * 8) {
+        animateDisplayedWin(settlementWin, 1450, true);
+      } else {
+        state.displayedWinAmount = settlementWin;
+        els.winText.textContent = formatMoney(state.displayedWinAmount);
+        replayClass(els.winText, "win-pop");
+      }
+    }
+
+    state.roundActive = false;
+    state.activeLayerIndex = 0;
+    state.provablyFair.nonce += 1;
+    persistProvablyFairState();
+    updateProvablyFairPanel();
+
+    setStatus("Ready");
+    if (state.mode === "stake") {
+      els.roundText.textContent = `Round complete: local hit ${formatMultiplier(winningMultiplier)} on ${state.layers[plan.winner.layerIndex].name}, payout settled by StakeEngine.`;
+    } else {
+      els.roundText.textContent = `Round complete: ${formatMultiplier(winningMultiplier)} on ${state.layers[plan.winner.layerIndex].name}.`;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`Error: ${message}`);
-    if (state.mode === "simulation") {
-      resetRoundState();
+
+    if (state.mode === "simulation" && wagerDeducted && !roundSettled) {
+      state.balance.amount += state.betAmount;
     }
+
+    if (state.mode === "stake" && state.liveRound?.active) {
+      try {
+        await endStakeRound();
+      } catch {
+        // ignore secondary end-round failures
+      }
+    }
+
+    state.roundActive = false;
+    state.activeLayerIndex = 0;
+    resetRoundVisualState();
   } finally {
     updateHud();
     drawWheel();
@@ -954,13 +2222,53 @@ function adjustBet(direction) {
   if (state.roundActive || state.spinning) {
     return;
   }
+
   const next = Math.min(
     Math.max(state.betIndex + direction, 0),
     state.config.betLevels.length - 1,
   );
+
   state.betIndex = next;
   state.betAmount = state.config.betLevels[next];
   updateHud();
+}
+
+function applyClientSeed() {
+  if (state.roundActive || state.spinning) {
+    setStatus("Wait for the current round to finish before changing seed.");
+    return;
+  }
+
+  state.provablyFair.clientSeed = sanitizeSeed(els.clientSeedInput.value);
+  state.provablyFair.nonce = 0;
+  state.simulationNonceCursor = 0;
+  state.simulationLastBatch = null;
+  state.simulationTopWins = [];
+  persistProvablyFairState();
+  updateProvablyFairPanel();
+  renderSimulationTopWins();
+  setSimulationStatus("Seed updated. Run a new simulation batch for replay data.");
+  updateSimulationReplayUi();
+  setStatus("Client seed applied and nonce reset.");
+}
+
+function rotateClientSeed() {
+  if (state.roundActive || state.spinning) {
+    setStatus("Wait for the current round to finish before rotating seed.");
+    return;
+  }
+
+  state.provablyFair.clientSeed = generateSeed("client");
+  state.provablyFair.nonce = 0;
+  state.simulationNonceCursor = 0;
+  state.simulationLastBatch = null;
+  state.simulationTopWins = [];
+  persistProvablyFairState();
+  updateProvablyFairPanel();
+  renderSimulationTopWins();
+  setSimulationStatus("Seed rotated. Run a new simulation batch for replay data.");
+  updateSimulationReplayUi();
+  setStatus("Client seed rotated and nonce reset.");
 }
 
 function attachEvents() {
@@ -975,6 +2283,65 @@ function attachEvents() {
   els.betUpButton.addEventListener("click", () => {
     adjustBet(1);
   });
+
+  els.applySeedButton.addEventListener("click", () => {
+    applyClientSeed();
+  });
+
+  els.rotateSeedButton.addEventListener("click", () => {
+    rotateClientSeed();
+  });
+
+  els.clientSeedInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      applyClientSeed();
+    }
+  });
+
+  for (const button of els.simButtons) {
+    button.addEventListener("click", async () => {
+      const count = Number.parseInt(button.dataset.simCount || "", 10);
+      if (!SIMULATION_BATCH_COUNTS.has(count)) {
+        setSimulationStatus("Unsupported simulation batch requested.");
+        return;
+      }
+      await simulateSpins(count);
+    });
+  }
+
+  els.simReplayButton?.addEventListener("click", async () => {
+    await replaySimulationSpin();
+  });
+
+  els.simReplayInput?.addEventListener("input", () => {
+    updateSimulationReplayUi();
+  });
+
+  els.simReplayInput?.addEventListener("keydown", async (event) => {
+    if (event.key === "Enter") {
+      await replaySimulationSpin();
+    }
+  });
+
+  els.simTopList?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const replayButton = target.closest("[data-replay-spin]");
+    if (!(replayButton instanceof HTMLElement)) {
+      return;
+    }
+    const spin = Number.parseInt(replayButton.dataset.replaySpin || "", 10);
+    if (!Number.isFinite(spin)) {
+      return;
+    }
+    if (els.simReplayInput) {
+      els.simReplayInput.value = String(spin);
+    }
+    updateSimulationReplayUi();
+    await replaySimulationSpin(spin);
+  });
 }
 
 async function init() {
@@ -987,19 +2354,30 @@ async function init() {
 
   state.layers = buildLayersFromBlueprint();
   state.layerRotations = state.layers.map(() => 0);
+  state.layerGone = state.layers.map(() => false);
   state.latestOutcomeByLayer = state.layers.map(() => null);
+
   updateDerivedMath();
+  runMathSanityChecks();
 
   syncBetFromConfig();
   await loadStakeSdk();
   await bootstrapSession();
+  await initProvablyFairState();
+  loadUpBreakTexture();
 
   renderPaytable();
   updateHud();
+  renderSimulationTopWins();
+  setSimulationStatus(
+    state.mode === "stake"
+      ? "Local preview only: simulation does not change Stake balance or nonce."
+      : "Run a simulation batch to track top wins.",
+  );
+  updateSimulationReplayUi();
+  resetRoundVisualState();
   drawWheel();
   attachEvents();
 }
 
 init();
-
-

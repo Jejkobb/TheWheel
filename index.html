@@ -12,19 +12,67 @@
         <div class="wheel-shell">
           <canvas id="wheelCanvas" width="720" height="720"></canvas>
         </div>
-        <aside id="paytable" class="paytable"></aside>
+        <aside id="paytable" class="paytable" hidden></aside>
 
         <div class="stage-overlay">
           <p id="statusText">Booting...</p>
-          <p id="roundText">Press spin to begin from the center layer.</p>
+          <p id="roundText">Press launch to send the ball from the core.</p>
           <p class="meta-line">
             Layer:
             <strong><span id="layerIndexText">1</span>/<span id="layerCountText">1</span></strong>
-            | Potential Max: <strong id="maxPathText">10,000x</strong>
+            | Segment HP: <strong id="livesText">2-hit</strong>
+            | Potential Max: <strong id="maxPathText">1,000x</strong>
             | RTP: <strong id="rtpText">96.00%</strong>
             | Mode: <strong id="modeText">Simulation</strong>
           </p>
         </div>
+      </section>
+
+      <section class="provably-fair">
+        <details open>
+          <summary>Provably Fair</summary>
+          <div class="fair-controls">
+            <label class="fair-seed-label" for="clientSeedInput">Client Seed</label>
+            <input id="clientSeedInput" class="fair-seed-input" type="text" maxlength="64" />
+            <button id="applySeedButton" class="mini-btn fair-btn" type="button">Use Seed</button>
+            <button id="rotateSeedButton" class="mini-btn fair-btn" type="button">Rotate Seed</button>
+          </div>
+          <p class="fair-line">Server Seed Hash: <code id="serverSeedHashText">-</code></p>
+          <p class="fair-line">Nonce: <strong id="fairNonceText">0</strong></p>
+          <p class="fair-line">Last Round Hash: <code id="lastRoundHashText">-</code></p>
+          <p class="fair-note">
+            RNG stream: SHA-256(serverSeed:clientSeed:nonce:cursor). The round is resolved before animation.
+          </p>
+        </details>
+      </section>
+
+      <section class="sim-panel">
+        <h3>Spin Simulator</h3>
+        <div class="sim-controls">
+          <button class="mini-btn sim-btn" id="sim100Button" type="button" data-sim-count="100">100</button>
+          <button class="mini-btn sim-btn" id="sim300Button" type="button" data-sim-count="300">300</button>
+          <button class="mini-btn sim-btn" id="sim500Button" type="button" data-sim-count="500">500</button>
+          <button class="mini-btn sim-btn" id="sim1000Button" type="button" data-sim-count="1000">1000</button>
+        </div>
+        <div class="sim-replay">
+          <label class="sim-replay-label" for="simReplayInput">Watch Spin</label>
+          <input
+            id="simReplayInput"
+            class="sim-replay-input"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Spin #"
+          />
+          <button class="mini-btn sim-btn sim-replay-btn" id="simReplayButton" type="button">
+            Watch
+          </button>
+        </div>
+        <p id="simReplayHint" class="sim-status">Run a simulation batch first, then pick a spin.</p>
+        <p id="simStatusText" class="sim-status">Run a simulation batch to track top wins.</p>
+        <ol id="simTopList" class="sim-top-list">
+          <li>No simulation run yet.</li>
+        </ol>
       </section>
 
       <section class="hud-wrap">
@@ -47,9 +95,9 @@
           </div>
         </div>
 
-        <button id="spinButton" class="spin-btn" type="button" aria-label="Spin wheel">
-          <span class="spin-arrows">↺</span>
-          <span class="spin-label">spin</span>
+        <button id="spinButton" class="spin-btn" type="button" aria-label="Launch ball">
+          <span class="spin-arrows">O</span>
+          <span class="spin-label">launch</span>
         </button>
       </section>
     </main>
