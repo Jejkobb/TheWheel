@@ -188,6 +188,43 @@ body {
   gap: 8px;
 }
 
+.profile-control {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #1b212c, #151b25);
+  padding: 10px;
+  display: grid;
+  gap: 7px;
+}
+
+.profile-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.profile-select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #1a202b;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+.profile-summary {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .spin-btn {
   width: 100%;
   min-height: 52px;
@@ -441,6 +478,7 @@ body {
 .mini-btn:focus-visible,
 .spin-btn:focus-visible,
 .bet-amount-input:focus-visible,
+.profile-select:focus-visible,
 .fair-seed-input:focus-visible,
 .sim-replay-input:focus-visible {
   outline: 2px solid var(--focus);

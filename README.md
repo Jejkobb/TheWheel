@@ -6,26 +6,35 @@ Outer Wheel now runs on a **single-launch, segment-durability mechanic**:
 - every segment has **2 hit durability**
 - when an `UP` segment reaches 2 hits, the entire layer breaks away
 - when a multiplier segment reaches 2 hits, that multiplier is the win
-- hard max win remains `1,000x`
+- wheel versions are selectable in the HUD
 - payout is always the final landed multiplier only
 - flight is zero-gravity style with constant-speed ricochets (breakout-like motion)
 - rings use seeded random start angles each round (no continuous spin during flight)
 - UP impacts instantly break/remove the active ring with a short particle burst
+- `0x` multiplier contacts bounce immediately with no hold pause
+- general multiplier reveal pauses are tuned shorter for snappier pacing
 - UP slices use an arrow icon and a crack-texture overlay for visual clarity
 
 ## RTP + Math
 
-- Theoretical RTP is calibrated to **96.00%** for this mechanic.
-- UP density remains explicit and unchanged:
+- Theoretical RTP is calibrated to **100.00%** for this mechanic.
+- UP density is explicit and profile-defined.
+- No fractional outcomes between `0x` and `2x` are used.
+- All ring wedges stay equal-width; value tuning is done by multiplier placement.
+
+## Wheel Profiles
+
+- `High Legacy` (default): preserved six-layer layout, max win `1,000x`, RTP `100.00%`, outer crown has no `0x` slices.
+- `Medium Balanced`: five-layer variant, max win `100x`, RTP `100.00%`, final layer pays on `100%` of slices.
+- Current profile is persisted in local storage and restored on reload.
+
+`High Legacy` UP density:
   - Core: `1/4`
   - Layer 2: `3/12`
   - Layer 3: `2/11`
   - Layer 4: `1/10`
   - Layer 5: `1/10`
   - Outer Crown: `0`
-- All ring wedges stay equal-width; value tuning is done by multiplier placement.
-- Outer Crown prizes are distributed around the ring instead of clustered in one zone.
-- No fractional outcomes between `0x` and `2x` are used.
 
 ## Provably Fair
 

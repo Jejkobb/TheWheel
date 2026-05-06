@@ -1,5 +1,5 @@
 const API_MULTIPLIER = 1_000_000;
-const TARGET_RTP = 0.96;
+const TARGET_RTP = 1;
 const SEGMENT_HITS_TO_BREAK = 2;
 const MAX_COLLISIONS_PER_ROUND = 220;
 const BALL_RADIUS_PX = 10;
@@ -13,12 +13,14 @@ const PRELAUNCH_MIN_TURNS = 0.6;
 const PRELAUNCH_MAX_TURNS = 1.6;
 const FINAL_HIT_SLOW_FACTOR = 2.4;
 const BREAK_EFFECT_MS = 150;
-const LANDING_REVEAL_MS = 240;
-const BIG_REVEAL_MS = 760;
+const LANDING_REVEAL_MS = 140;
+const BIG_REVEAL_MS = 520;
+const ZERO_MULTIPLIER_REVEAL_MS = 0;
 const FAIR_ROLL_COUNT = 192;
 const RTP_DISPLAY_TOLERANCE = 0.0005;
 const SIMULATION_BATCH_COUNTS = new Set([100, 300, 500, 1000]);
 const UP_SEGMENT_ICON = "\u2B06";
+const PROFILE_STORAGE_KEY = "outer-wheel-profile";
 // CC0 crack silhouette from Wikimedia Commons (CrackedWindow1.png).
 const UP_BREAK_TEXTURE_URL =
   "https://commons.wikimedia.org/wiki/Special:FilePath/CrackedWindow1.png";
@@ -110,59 +112,109 @@ const SIMULATED_BALANCE = {
   currency: "USD",
 };
 
-const LAYER_BLUEPRINTS = [
-  {
-    name: "Core",
-    upSlices: 1,
-    multipliers: [0, 0, 0],
-  },
-  {
-    name: "Layer 2",
-    upSlices: 3,
-    multipliers: [0, 0, 0, 0, 0, 2, 2, 4, 10],
-  },
-  {
-    name: "Layer 3",
-    upSlices: 2,
-    multipliers: [0, 0, 0, 2, 2, 4, 6, 10, 16],
-  },
-  {
-    name: "Layer 4",
-    upSlices: 1,
-    multipliers: [0, 0, 4, 8, 14, 24, 36, 64, 100],
-  },
-  {
-    name: "Layer 5",
-    upSlices: 1,
-    multipliers: [0, 0, 6, 14, 28, 50, 80, 130, 160],
-  },
-  {
-    name: "Outer Crown",
-    upSlices: 0,
-    multipliers: [
-      1000,
-      600,
-      450,
-      320,
-      240,
-      200,
-      160,
-      140,
-      120,
-      100,
-      80,
-      60,
-      40,
-      30,
-      20,
-      20,
-      10,
-      10,
-      0,
-      0,
+const DEFAULT_WHEEL_PROFILE_KEY = "high_legacy_1000";
+
+const LAYER_BLUEPRINTS = {
+  high_legacy_1000: {
+    key: "high_legacy_1000",
+    label: "High Legacy",
+    volatility: "High",
+    description: "Six-layer high profile tuned to 100.00% RTP with an always-paying outer crown (1,000x max path).",
+    targetRtp: TARGET_RTP,
+    maxWinMultiplier: 1000,
+    expectedUpChances: [1 / 4, 3 / 12, 2 / 11, 1 / 10, 1 / 10, 0],
+    finalLayerMinRewardChance: 1,
+    layers: [
+      {
+        name: "Core",
+        upSlices: 1,
+        multipliers: [0, 0, 0],
+      },
+      {
+        name: "Layer 2",
+        upSlices: 3,
+        multipliers: [0, 0, 0, 0, 0, 2, 2, 4, 10],
+      },
+      {
+        name: "Layer 3",
+        upSlices: 2,
+        multipliers: [0, 0, 0, 2, 2, 4, 6, 10, 16],
+      },
+      {
+        name: "Layer 4",
+        upSlices: 1,
+        multipliers: [0, 0, 4, 8, 14, 24, 36, 64, 100],
+      },
+      {
+        name: "Layer 5",
+        upSlices: 1,
+        multipliers: [0, 0, 6, 14, 28, 50, 80, 130, 160],
+      },
+      {
+        name: "Outer Crown",
+        upSlices: 0,
+        multipliers: [
+          { value: 1000, weight: 2 },
+          940,
+          800,
+          740,
+          680,
+          620,
+          580,
+          540,
+          500,
+          470,
+          440,
+          410,
+          380,
+          350,
+          320,
+          280,
+          240,
+          200,
+          150,
+        ],
+      },
     ],
   },
-];
+  medium_balanced_100: {
+    key: "medium_balanced_100",
+    label: "Medium Balanced",
+    volatility: "Medium",
+    description: "Five-layer 100x profile tuned to 100.00% RTP with an always-paying final crown.",
+    targetRtp: TARGET_RTP,
+    maxWinMultiplier: 100,
+    expectedUpChances: [1 / 4, 2 / 10, 1 / 9, 1 / 9, 0],
+    finalLayerMinRewardChance: 1,
+    layers: [
+      {
+        name: "Core",
+        upSlices: 1,
+        multipliers: [0, 0, 2],
+      },
+      {
+        name: "Layer 2",
+        upSlices: 2,
+        multipliers: [4, 4, 2, 2, 0, 0, 0, 0],
+      },
+      {
+        name: "Layer 3",
+        upSlices: 1,
+        multipliers: [6, 6, 4, 4, 2, 2, 0, 0],
+      },
+      {
+        name: "Layer 4",
+        upSlices: 1,
+        multipliers: [8, 6, 6, 4, 4, 2, 2, 0],
+      },
+      {
+        name: "Outer Crown",
+        upSlices: 0,
+        multipliers: [100, 98, 96, 94, 92, 90, 88, 86, 84, 82, 80, 78, 76, 74, 72, 70, 68, 66, 24, 2],
+      },
+    ],
+  },
+};
 
 const els = {
   modeText: document.getElementById("modeText"),
@@ -179,6 +231,8 @@ const els = {
   betAmountInput: document.getElementById("betAmountInput"),
   betDownButton: document.getElementById("betDownButton"),
   betUpButton: document.getElementById("betUpButton"),
+  wheelProfileSelect: document.getElementById("wheelProfileSelect"),
+  wheelProfileSummary: document.getElementById("wheelProfileSummary"),
   spinButton: document.getElementById("spinButton"),
   wheelCanvas: document.getElementById("wheelCanvas"),
   paytable: document.getElementById("paytable"),
@@ -209,6 +263,8 @@ const state = {
   displayedWinAmount: 0,
   lastWinAmount: 0,
   lastResolvedMultiplier: 0,
+  activeProfileKey: DEFAULT_WHEEL_PROFILE_KEY,
+  activeProfile: null,
   roundActive: false,
   spinning: false,
   activeLayerIndex: 0,
@@ -528,6 +584,72 @@ function saveStorage(key, value) {
   }
 }
 
+function getWheelProfiles() {
+  return Object.values(LAYER_BLUEPRINTS);
+}
+
+function getWheelProfileByKey(profileKey) {
+  if (profileKey && LAYER_BLUEPRINTS[profileKey]) {
+    return LAYER_BLUEPRINTS[profileKey];
+  }
+  return LAYER_BLUEPRINTS[DEFAULT_WHEEL_PROFILE_KEY] ?? null;
+}
+
+function calculateMultiplierRewardChance(layer) {
+  const multiplierSegments = layer?.segments?.filter((segment) => segment.type === "mult") ?? [];
+  const multiplierWeight = multiplierSegments.reduce(
+    (sum, segment) => sum + Math.max(1, segment.weight || 1),
+    0,
+  );
+  if (multiplierWeight <= 0) {
+    return 0;
+  }
+  const rewardWeight = multiplierSegments.reduce(
+    (sum, segment) => sum + (segment.value > 0 ? Math.max(1, segment.weight || 1) : 0),
+    0,
+  );
+  return rewardWeight / multiplierWeight;
+}
+
+function getActiveFinalLayerRewardChance() {
+  if (!state.layers.length) {
+    return 0;
+  }
+  return calculateMultiplierRewardChance(state.layers[state.layers.length - 1]);
+}
+
+function renderWheelProfileSelect() {
+  if (!els.wheelProfileSelect) {
+    return;
+  }
+
+  const options = getWheelProfiles()
+    .map(
+      (profile) =>
+        `<option value="${profile.key}">${profile.label} | ${profile.volatility} | ${formatMultiplier(profile.maxWinMultiplier)} max</option>`,
+    )
+    .join("");
+  els.wheelProfileSelect.innerHTML = options;
+  els.wheelProfileSelect.value = state.activeProfileKey;
+}
+
+function updateWheelProfileSummary() {
+  if (!els.wheelProfileSummary) {
+    return;
+  }
+
+  const profile = state.activeProfile;
+  if (!profile) {
+    els.wheelProfileSummary.textContent = "Wheel profile unavailable.";
+    return;
+  }
+
+  const finalRewardChance = getActiveFinalLayerRewardChance() * 100;
+  const rtpPercent = state.theoreticalRtp * 100;
+  els.wheelProfileSummary.textContent =
+    `${profile.description} RTP ${rtpPercent.toFixed(2)}%, max ${formatMultiplier(state.maxWinMultiplier)}, final-layer reward ${finalRewardChance.toFixed(1)}%.`;
+}
+
 function persistProvablyFairState() {
   saveStorage(FAIR_STORAGE_KEYS.serverSeed, state.provablyFair.serverSeed);
   saveStorage(FAIR_STORAGE_KEYS.clientSeed, state.provablyFair.clientSeed);
@@ -659,8 +781,9 @@ async function createFairRolls(serverSeed, clientSeed, nonce, count) {
   return { material, rolls };
 }
 
-function buildLayersFromBlueprint() {
-  return LAYER_BLUEPRINTS.map((blueprint) => {
+function buildLayersFromBlueprint(profile) {
+  const layers = Array.isArray(profile?.layers) ? profile.layers : [];
+  return layers.map((blueprint) => {
     const multiplierSegments = blueprint.multipliers.map((entry) => {
       if (typeof entry === "number") {
         return {
@@ -740,9 +863,7 @@ function buildLayersFromBlueprint() {
           label:
             segment.type === "up"
               ? UP_SEGMENT_ICON
-              : segment.value === 1000
-                ? "1,000x"
-                : formatMultiplier(segment.value),
+              : formatMultiplier(segment.value),
         };
       }),
       totalWeight,
@@ -794,9 +915,19 @@ function updateDerivedMath() {
   }, 0);
 }
 
-function runMathSanityChecks() {
-  if (state.maxWinMultiplier !== 1000) {
-    throw new Error("Max path sanity failed: 1,000x must remain reachable.");
+function runMathSanityChecks(profile) {
+  if (!profile) {
+    throw new Error("Sanity failed: active wheel profile is missing.");
+  }
+
+  if (!state.layers.length) {
+    throw new Error("Sanity failed: active wheel profile has no layers.");
+  }
+
+  if (state.maxWinMultiplier !== profile.maxWinMultiplier) {
+    throw new Error(
+      `Max path sanity failed for ${profile.label}: expected ${formatMultiplier(profile.maxWinMultiplier)}.`,
+    );
   }
 
   const badLowMultiplier = state.layers
@@ -807,21 +938,119 @@ function runMathSanityChecks() {
     throw new Error("Sanity failed: multipliers between 0x and 2x are not allowed.");
   }
 
-  const expectedUpChances = [1 / 4, 3 / 12, 2 / 11, 1 / 10, 1 / 10, 0];
+  const expectedUpChances = Array.isArray(profile.expectedUpChances)
+    ? profile.expectedUpChances
+    : [];
+  if (expectedUpChances.length !== state.layers.length) {
+    throw new Error(
+      `Sanity failed for ${profile.label}: expected UP-chance definitions for each layer.`,
+    );
+  }
+
   const upChanceMismatch = state.layers.find((layer, index) => {
     const expected = expectedUpChances[index];
     return Math.abs(layer.upChance - expected) > 1e-9;
   });
 
   if (upChanceMismatch) {
-    throw new Error("Sanity failed: UP chances drifted from agreed layer values.");
+    throw new Error(`Sanity failed for ${profile.label}: UP chances drifted from profile config.`);
   }
 
-  if (Math.abs(state.theoreticalRtp - TARGET_RTP) > 0.001) {
+  const targetRtp = Number.isFinite(profile.targetRtp) ? profile.targetRtp : TARGET_RTP;
+  if (Math.abs(state.theoreticalRtp - targetRtp) > 0.001) {
     throw new Error(
-      `Sanity failed: RTP moved to ${(state.theoreticalRtp * 100).toFixed(4)}%, expected ~96.00%.`,
+      `Sanity failed for ${profile.label}: RTP moved to ${(state.theoreticalRtp * 100).toFixed(4)}%, expected ~${(targetRtp * 100).toFixed(2)}%.`,
     );
   }
+
+  if (Number.isFinite(profile.finalLayerMinRewardChance)) {
+    const finalRewardChance = getActiveFinalLayerRewardChance();
+    if (finalRewardChance + 1e-9 < profile.finalLayerMinRewardChance) {
+      throw new Error(
+        `Sanity failed for ${profile.label}: final layer reward chance ${(finalRewardChance * 100).toFixed(2)}% is below ${(profile.finalLayerMinRewardChance * 100).toFixed(2)}%.`,
+      );
+    }
+  }
+}
+
+function runPacingSanityChecks() {
+  if (ZERO_MULTIPLIER_REVEAL_MS !== 0) {
+    throw new Error("Pacing sanity failed: 0x reveal must be instant.");
+  }
+  if (LANDING_REVEAL_MS <= 0) {
+    throw new Error("Pacing sanity failed: base landing reveal must be positive.");
+  }
+  if (BIG_REVEAL_MS <= LANDING_REVEAL_MS) {
+    throw new Error("Pacing sanity failed: big reveal must be longer than base reveal.");
+  }
+}
+
+function applyWheelProfile(profileKey, options = {}) {
+  const {
+    persist = true,
+    announce = false,
+    resetSimulation = true,
+    refreshUi = true,
+  } = options;
+
+  const profile = getWheelProfileByKey(profileKey);
+  if (!profile) {
+    return false;
+  }
+
+  state.activeProfileKey = profile.key;
+  state.activeProfile = profile;
+  state.activeLayerIndex = 0;
+  state.layers = buildLayersFromBlueprint(profile);
+  state.layerRotations = state.layers.map(() => 0);
+  state.layerGone = state.layers.map(() => false);
+  state.latestOutcomeByLayer = state.layers.map(() => null);
+  state.segmentHitsByLayer = state.layers.map((layer) => layer.segments.map(() => 0));
+  state.upSegmentsGoneByLayer = state.layers.map((layer) => layer.segments.map(() => false));
+
+  updateDerivedMath();
+  runMathSanityChecks(profile);
+  resetRoundVisualState();
+
+  if (resetSimulation) {
+    state.simulationLastBatch = null;
+    state.simulationTopWins = [];
+    renderSimulationTopWins([]);
+    setSimulationReplayHint("Profile changed. Run a simulation batch first, then pick a spin.");
+    setSimulationStatus(
+      state.mode === "stake"
+        ? "Profile switched. Local simulation uses this version; Stake settlement still comes from backend."
+        : "Profile switched. Run a simulation batch to evaluate this version.",
+    );
+    if (els.simReplayInput) {
+      els.simReplayInput.value = "";
+    }
+    updateSimulationReplayUi();
+  }
+
+  renderWheelProfileSelect();
+
+  if (persist) {
+    saveStorage(PROFILE_STORAGE_KEY, profile.key);
+  }
+
+  if (announce) {
+    if (state.mode === "stake") {
+      els.roundText.textContent =
+        `Wheel profile set to ${profile.label}. Animation/simulation now use this profile; Stake payout remains backend-settled.`;
+    } else {
+      els.roundText.textContent =
+        `Wheel profile set to ${profile.label}. Max path ${formatMultiplier(profile.maxWinMultiplier)} at ${(state.theoreticalRtp * 100).toFixed(2)}% RTP.`;
+    }
+  }
+
+  if (refreshUi) {
+    renderPaytable();
+    updateHud();
+    drawWheel();
+  }
+
+  return true;
 }
 
 function renderPaytable() {
@@ -864,7 +1093,8 @@ function renderPaytable() {
     })
     .join("");
 
-  els.paytable.innerHTML = `<h3>2-Hit Segment Math</h3>${rows}`;
+  const profileLabel = state.activeProfile?.label || "Wheel";
+  els.paytable.innerHTML = `<h3>2-Hit Segment Math (${profileLabel})</h3>${rows}`;
 }
 
 function updateHud() {
@@ -894,9 +1124,14 @@ function updateHud() {
   els.maxPathText.textContent = formatMultiplier(state.maxWinMultiplier);
 
   const rtp = state.theoreticalRtp * 100;
-  const rtpDrift = Math.abs(state.theoreticalRtp - TARGET_RTP);
+  const targetRtp = Number.isFinite(state.activeProfile?.targetRtp)
+    ? state.activeProfile.targetRtp
+    : TARGET_RTP;
+  const rtpDrift = Math.abs(state.theoreticalRtp - targetRtp);
   els.rtpText.textContent =
     rtpDrift <= RTP_DISPLAY_TOLERANCE ? `${rtp.toFixed(2)}%` : `${rtp.toFixed(2)}%*`;
+
+  updateWheelProfileSummary();
 }
 
 function clearWinAnimation() {
@@ -1002,6 +1237,9 @@ function setSpinDisabled(disabled) {
   els.spinButton.disabled = disabled;
   els.betDownButton.disabled = disabled || state.roundActive;
   els.betUpButton.disabled = disabled || state.roundActive;
+  if (els.wheelProfileSelect) {
+    els.wheelProfileSelect.disabled = disabled || state.roundActive;
+  }
   els.applySeedButton.disabled = disabled || state.roundActive;
   els.rotateSeedButton.disabled = disabled || state.roundActive;
   els.clientSeedInput.disabled = disabled || state.roundActive;
@@ -1356,18 +1594,23 @@ function drawBall() {
 
   if (state.ballTrail.length > 1) {
     ctx.save();
-    ctx.beginPath();
-    for (let i = 0; i < state.ballTrail.length; i += 1) {
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    const lastIndex = state.ballTrail.length - 1;
+    for (let i = 1; i < state.ballTrail.length; i += 1) {
+      const prev = state.ballTrail[i - 1];
       const point = state.ballTrail[i];
-      if (i === 0) {
-        ctx.moveTo(point.x, point.y);
-      } else {
-        ctx.lineTo(point.x, point.y);
-      }
+      const progress = i / lastIndex;
+      const alpha = 0.04 + 0.44 * progress ** 1.25;
+      const width = 1 + 2.6 * progress;
+
+      ctx.beginPath();
+      ctx.moveTo(prev.x, prev.y);
+      ctx.lineTo(point.x, point.y);
+      ctx.strokeStyle = `rgba(255, 240, 180, ${alpha.toFixed(3)})`;
+      ctx.lineWidth = width;
+      ctx.stroke();
     }
-    ctx.strokeStyle = "rgba(255, 240, 180, 0.45)";
-    ctx.lineWidth = 3;
-    ctx.stroke();
     ctx.restore();
   }
 
@@ -1801,7 +2044,15 @@ async function playLandingReveal(event, plan, elapsedStartSec) {
   const isCarnival =
     event.segment.type === "mult" &&
     (event.segment.value >= 50 || event.segment.value === state.maxWinMultiplier);
-  const duration = isCarnival ? BIG_REVEAL_MS : LANDING_REVEAL_MS;
+  let duration = isCarnival ? BIG_REVEAL_MS : LANDING_REVEAL_MS;
+  if (event.segment.type === "mult" && event.segment.value === 0) {
+    duration = ZERO_MULTIPLIER_REVEAL_MS;
+  }
+  if (duration <= 0) {
+    state.revealState = null;
+    drawWheel();
+    return 0;
+  }
   const startTime = performance.now();
   let revealSegmentIndex = event.segmentIndex;
   let revealSpan = 1;
@@ -2339,7 +2590,9 @@ async function playRoundPlan(plan) {
 
     updateHud();
     const layerSpeedScale = getLayerTravelTimeScale(event.layerIndex, state.layers.length);
-    const shatterScale = event.isWinningHit ? FINAL_HIT_SLOW_FACTOR : 1;
+    const isZeroMultiplierWin =
+      event.isWinningHit && event.segment.type === "mult" && event.segment.value === 0;
+    const shatterScale = event.isWinningHit && !isZeroMultiplierWin ? FINAL_HIT_SLOW_FACTOR : 1;
     const travelScale = layerSpeedScale * shatterScale;
     await animateBallSegment(
       event.startLocal,
@@ -2584,6 +2837,32 @@ function attachEvents() {
     adjustBet(1);
   });
 
+  els.wheelProfileSelect?.addEventListener("change", () => {
+    if (state.roundActive || state.spinning) {
+      els.wheelProfileSelect.value = state.activeProfileKey;
+      setStatus("Wait for the current round to finish before switching wheel profile.");
+      return;
+    }
+
+    const selectedProfileKey = els.wheelProfileSelect.value;
+    if (selectedProfileKey === state.activeProfileKey) {
+      return;
+    }
+
+    playSfx("uiClick");
+    const applied = applyWheelProfile(selectedProfileKey, {
+      persist: true,
+      announce: true,
+      resetSimulation: true,
+      refreshUi: true,
+    });
+
+    if (!applied) {
+      els.wheelProfileSelect.value = state.activeProfileKey;
+      setStatus("Unable to switch wheel profile.");
+    }
+  });
+
   els.betAmountInput?.addEventListener("change", () => {
     setBetFromInputValue(els.betAmountInput.value);
   });
@@ -2675,15 +2954,27 @@ async function init() {
     return;
   }
 
-  state.layers = buildLayersFromBlueprint();
-  state.layerRotations = state.layers.map(() => 0);
-  state.layerGone = state.layers.map(() => false);
-  state.latestOutcomeByLayer = state.layers.map(() => null);
+  runPacingSanityChecks();
 
-  updateDerivedMath();
-  runMathSanityChecks();
+  const storedProfileKey = loadStorage(PROFILE_STORAGE_KEY);
+  const applied = applyWheelProfile(storedProfileKey || DEFAULT_WHEEL_PROFILE_KEY, {
+    persist: false,
+    announce: false,
+    resetSimulation: false,
+    refreshUi: false,
+  });
+  if (!applied) {
+    throw new Error("Unable to initialize wheel profile.");
+  }
 
   syncBetFromConfig();
+
+  // Render profile-driven HUD/canvas immediately so UI does not wait on networked SDK/session work.
+  renderPaytable();
+  updateHud();
+  resetRoundVisualState();
+  drawWheel();
+
   await loadStakeSdk();
   await bootstrapSession();
   await initProvablyFairState();
@@ -2704,5 +2995,11 @@ async function init() {
   attachEvents();
 }
 
-init();
+init().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  els.roundText.textContent = `Initialization failed: ${message}`;
+  if (els.wheelProfileSummary && els.wheelProfileSummary.textContent.includes("Loading wheel profile")) {
+    els.wheelProfileSummary.textContent = `Wheel profile load failed: ${message}`;
+  }
+});
 
