@@ -11,7 +11,8 @@ const PRELAUNCH_INNER_LAYER_MS = 340;
 const PRELAUNCH_OUTER_LAYER_MS = 620;
 const PRELAUNCH_MIN_TURNS = 0.6;
 const PRELAUNCH_MAX_TURNS = 1.6;
-const FINAL_HIT_SLOW_FACTOR = 2.4;
+const FINAL_HIT_SLOW_FACTOR = 1.65;
+const FINAL_HIT_END_SPEED_RATIO = 0.45;
 const BREAK_EFFECT_MS = 150;
 const LANDING_REVEAL_MS = 140;
 const BIG_REVEAL_MS = 520;
@@ -20,7 +21,7 @@ const FAIR_ROLL_COUNT = 192;
 const RTP_DISPLAY_TOLERANCE = 0.0005;
 const SIMULATION_BATCH_COUNTS = new Set([100, 300, 500, 1000]);
 const UP_SEGMENT_ICON = "\u2B06";
-const PROFILE_STORAGE_KEY = "outer-wheel-profile";
+const PROFILE_STORAGE_KEY = "the-wheel-profile";
 // CC0 crack silhouette from Wikimedia Commons (CrackedWindow1.png).
 const UP_BREAK_TEXTURE_URL =
   "https://commons.wikimedia.org/wiki/Special:FilePath/CrackedWindow1.png";
@@ -87,10 +88,10 @@ const SFX_LIBRARY = {
 };
 
 const FAIR_STORAGE_KEYS = {
-  serverSeed: "outer-wheel-server-seed",
-  clientSeed: "outer-wheel-client-seed",
-  nonce: "outer-wheel-seed-nonce",
-  lastRoundHash: "outer-wheel-last-round-hash",
+  serverSeed: "the-wheel-server-seed",
+  clientSeed: "the-wheel-client-seed",
+  nonce: "the-wheel-seed-nonce",
+  lastRoundHash: "the-wheel-last-round-hash",
 };
 
 const StakeSDK = {
@@ -219,7 +220,6 @@ const LAYER_BLUEPRINTS = {
 const els = {
   modeText: document.getElementById("modeText"),
   statusText: document.getElementById("statusText"),
-  roundText: document.getElementById("roundText"),
   layerIndexText: document.getElementById("layerIndexText"),
   layerCountText: document.getElementById("layerCountText"),
   livesText: document.getElementById("livesText"),
@@ -248,9 +248,20 @@ const els = {
   simButtons: Array.from(document.querySelectorAll("[data-sim-count]")),
   simReplayInput: document.getElementById("simReplayInput"),
   simReplayButton: document.getElementById("simReplayButton"),
+  rulesButton: document.getElementById("rulesButton"),
+  rulesModal: document.getElementById("rulesModal"),
+  rulesCloseButton: document.getElementById("rulesCloseButton"),
+  rulesBackdrop: document.getElementById("rulesBackdrop"),
+  provablyFairButton: document.getElementById("provablyFairButton"),
+  provablyFairModal: document.getElementById("provablyFairModal"),
+  provablyFairCloseButton: document.getElementById("provablyFairCloseButton"),
+  provablyFairBackdrop: document.getElementById("provablyFairBackdrop"),
 };
 
-const ctx = els.wheelCanvas.getContext("2d");
+const ctx = els.wheelCanvas.getContext("2d", {
+  alpha: false,
+  desynchronized: true,
+});
 
 const state = {
   mode: "simulation",
@@ -301,10 +312,139 @@ const state = {
     nonce: 0,
     lastRoundHash: "",
   },
+  ui: {
+    rulesOpen: false,
+    provablyFairOpen: false,
+  },
+  canvas: {
+    logicalWidth: 720,
+    logicalHeight: 720,
+    pixelRatio: 1,
+    resizeObserver: null,
+  },
 };
 
 function setStatus(text) {
   void text;
+}
+
+function openProvablyFairModal() {
+  if (!els.provablyFairModal || state.ui.provablyFairOpen) {
+    return;
+  }
+  closeRulesModal(false);
+  state.ui.provablyFairOpen = true;
+  els.provablyFairModal.hidden = false;
+  els.provablyFairModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  requestAnimationFrame(() => {
+    els.clientSeedInput?.focus();
+    els.clientSeedInput?.select();
+  });
+}
+
+function closeProvablyFairModal() {
+  if (!els.provablyFairModal || !state.ui.provablyFairOpen) {
+    return;
+  }
+  state.ui.provablyFairOpen = false;
+  els.provablyFairModal.hidden = true;
+  els.provablyFairModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+  els.provablyFairButton?.focus();
+}
+
+function openRulesModal() {
+  if (!els.rulesModal || state.ui.rulesOpen) {
+    return;
+  }
+  closeProvablyFairModal();
+  state.ui.rulesOpen = true;
+  els.rulesModal.hidden = false;
+  els.rulesModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  requestAnimationFrame(() => {
+    els.rulesCloseButton?.focus();
+  });
+}
+
+function closeRulesModal(returnFocus = true) {
+  if (!els.rulesModal || !state.ui.rulesOpen) {
+    return;
+  }
+  state.ui.rulesOpen = false;
+  els.rulesModal.hidden = true;
+  els.rulesModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+  if (returnFocus) {
+    els.rulesButton?.focus();
+  }
+}
+
+function getEffectivePixelRatio() {
+  const raw = window.devicePixelRatio || 1;
+  return Math.max(1, Math.min(2, raw));
+}
+
+function resizeCanvasToDisplaySize() {
+  if (!ctx || !els.wheelCanvas) {
+    return;
+  }
+
+  const rect = els.wheelCanvas.getBoundingClientRect();
+  const displaySize = Math.max(1, Math.floor(Math.min(rect.width, rect.height)));
+  if (displaySize <= 1) {
+    return;
+  }
+
+  const pixelRatio = getEffectivePixelRatio();
+  const renderWidth = Math.max(1, Math.round(displaySize * pixelRatio));
+  const renderHeight = Math.max(1, Math.round(displaySize * pixelRatio));
+  const changed =
+    els.wheelCanvas.width !== renderWidth ||
+    els.wheelCanvas.height !== renderHeight ||
+    state.canvas.pixelRatio !== pixelRatio;
+
+  if (!changed) {
+    return;
+  }
+
+  state.canvas.logicalWidth = displaySize;
+  state.canvas.logicalHeight = displaySize;
+  state.canvas.pixelRatio = pixelRatio;
+
+  els.wheelCanvas.width = renderWidth;
+  els.wheelCanvas.height = renderHeight;
+  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+  if (!state.roundActive && !state.spinning) {
+    resetRoundVisualState();
+  } else {
+    state.ballTrail = [];
+  }
+
+  drawWheel();
+}
+
+function attachCanvasResizeObserver() {
+  if (state.canvas.resizeObserver || !els.wheelCanvas) {
+    return;
+  }
+
+  if (typeof ResizeObserver === "function") {
+    state.canvas.resizeObserver = new ResizeObserver(() => {
+      resizeCanvasToDisplaySize();
+    });
+    state.canvas.resizeObserver.observe(els.wheelCanvas);
+  } else {
+    const onResize = () => resizeCanvasToDisplaySize();
+    window.addEventListener("resize", onResize, { passive: true });
+    state.canvas.resizeObserver = {
+      disconnect() {
+        window.removeEventListener("resize", onResize);
+      },
+    };
+  }
 }
 
 function clamp01(value) {
@@ -1035,13 +1175,7 @@ function applyWheelProfile(profileKey, options = {}) {
   }
 
   if (announce) {
-    if (state.mode === "stake") {
-      els.roundText.textContent =
-        `Wheel profile set to ${profile.label}. Animation/simulation now use this profile; Stake payout remains backend-settled.`;
-    } else {
-      els.roundText.textContent =
-        `Wheel profile set to ${profile.label}. Max path ${formatMultiplier(profile.maxWinMultiplier)} at ${(state.theoreticalRtp * 100).toFixed(2)}% RTP.`;
-    }
+    void profile;
   }
 
   if (refreshUi) {
@@ -1252,11 +1386,19 @@ function setSpinDisabled(disabled) {
 }
 
 function getWheelGeometry() {
-  const { width, height } = els.wheelCanvas;
+  const width =
+    state.canvas.logicalWidth ||
+    Math.max(1, Math.floor(els.wheelCanvas.getBoundingClientRect().width)) ||
+    720;
+  const height =
+    state.canvas.logicalHeight ||
+    Math.max(1, Math.floor(els.wheelCanvas.getBoundingClientRect().height)) ||
+    720;
+  const wheelSize = Math.min(width, height);
   const cx = width / 2;
   const cy = height / 2;
-  const centerRadius = 76;
-  const outerRadius = Math.min(width, height) / 2 - 16;
+  const centerRadius = Math.max(44, Math.min(84, wheelSize * 0.105));
+  const outerRadius = wheelSize / 2 - Math.max(12, wheelSize * 0.022);
   const ringThickness =
     state.layers.length > 0 ? (outerRadius - centerRadius) / state.layers.length : 0;
 
@@ -1304,8 +1446,10 @@ function getSegmentIndexFromAngle(layer, impactAngle, rotation) {
 }
 
 function getCenterPoint() {
-  const { cx, cy } = getWheelGeometry();
-  return { x: cx, y: cy };
+  return {
+    x: state.canvas.logicalWidth / 2,
+    y: state.canvas.logicalHeight / 2,
+  };
 }
 
 function normalizeVector(vector) {
@@ -1419,10 +1563,7 @@ async function animateLayersIntoStartRotation(plan) {
 }
 
 function pushBallTrail(position) {
-  state.ballTrail.push({ x: position.x, y: position.y });
-  if (state.ballTrail.length > 42) {
-    state.ballTrail.shift();
-  }
+  void position;
 }
 
 function resetRoundVisualState() {
@@ -1499,11 +1640,11 @@ function drawDoubleUpChevronGlyph(size, color) {
   drawChevron(bottomY);
 }
 
-function drawLabel(text, midAngle, radius, fontSize, color = "#fef3cb", glow = false) {
+function drawLabel(text, midAngle, radius, fontSize, color = "#fef3cb", glow = false, centerX, centerY) {
   ctx.save();
   ctx.translate(
-    els.wheelCanvas.width / 2 + Math.cos(midAngle) * radius,
-    els.wheelCanvas.height / 2 + Math.sin(midAngle) * radius,
+    centerX + Math.cos(midAngle) * radius,
+    centerY + Math.sin(midAngle) * radius,
   );
 
   ctx.rotate(midAngle + Math.PI / 2);
@@ -1592,28 +1733,6 @@ function drawBall() {
     return;
   }
 
-  if (state.ballTrail.length > 1) {
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    const lastIndex = state.ballTrail.length - 1;
-    for (let i = 1; i < state.ballTrail.length; i += 1) {
-      const prev = state.ballTrail[i - 1];
-      const point = state.ballTrail[i];
-      const progress = i / lastIndex;
-      const alpha = 0.04 + 0.44 * progress ** 1.25;
-      const width = 1 + 2.6 * progress;
-
-      ctx.beginPath();
-      ctx.moveTo(prev.x, prev.y);
-      ctx.lineTo(point.x, point.y);
-      ctx.strokeStyle = `rgba(255, 240, 180, ${alpha.toFixed(3)})`;
-      ctx.lineWidth = width;
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
   ctx.save();
   ctx.beginPath();
   ctx.arc(state.ballPosition.x, state.ballPosition.y, BALL_RADIUS_PX, 0, Math.PI * 2);
@@ -1678,7 +1797,6 @@ function drawWheel() {
         isMaxWin &&
         prevSegment?.type === "mult" &&
         prevSegment.value === state.maxWinMultiplier;
-      const mergedMaxEnd = mergedMaxWithNext ? end + nextSweep : end;
       const focusSpan = hasFinalWinFocus ? Math.max(1, state.finalWinFocus.span || 1) : 1;
       const isFocusedSegment =
         hasFinalWinFocus &&
@@ -1702,7 +1820,6 @@ function drawWheel() {
           isMaxWin,
           mergedMaxWithNext,
           mergedMaxWithPrev,
-          mergedMaxEnd,
           upSegmentArmed,
         });
       }
@@ -1730,24 +1847,6 @@ function drawWheel() {
         ctx.globalAlpha = 0.78;
         ctx.fillStyle = "#06080d";
         ctx.fill();
-        ctx.restore();
-      }
-
-      if (isMaxWin && !layerRemoved && !mergedMaxWithPrev) {
-        const pulse = 0.52 + 0.48 * (0.5 + Math.sin(now / 170) * 0.5);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(cx, cy, outer, start, mergedMaxEnd);
-        ctx.arc(cx, cy, inner, mergedMaxEnd, start, true);
-        ctx.closePath();
-        ctx.shadowColor = "#ffe8a1";
-        ctx.shadowBlur = 20 + pulse * 8;
-        ctx.strokeStyle = "#fff8d2";
-        ctx.lineWidth = 4.4;
-        ctx.stroke();
-        ctx.strokeStyle = "#f2c14f";
-        ctx.lineWidth = 2.1;
-        ctx.stroke();
         ctx.restore();
       }
 
@@ -1843,7 +1942,7 @@ function drawWheel() {
             ? labelFont * (mergedMaxWithNext ? maxWinLabelScale * 1.18 : maxWinLabelScale)
             : labelFont,
           color: palette.label,
-          glow: isMaxWin,
+          glow: false,
         });
       }
 
@@ -1916,31 +2015,17 @@ function drawWheel() {
       ctx.stroke();
       ctx.restore();
 
-      if (overlay.isMaxWin && !overlay.mergedMaxWithPrev) {
-        const pulse = 0.52 + 0.48 * (0.5 + Math.sin(now / 170) * 0.5);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(cx, cy, overlay.outer, overlay.start, overlay.mergedMaxEnd);
-        ctx.arc(cx, cy, overlay.inner, overlay.mergedMaxEnd, overlay.start, true);
-        ctx.closePath();
-        ctx.shadowColor = "#ffe8a1";
-        ctx.shadowBlur = 20 + pulse * 8;
-        ctx.strokeStyle = "#fff8d2";
-        ctx.lineWidth = 4.4;
-        ctx.stroke();
-        ctx.strokeStyle = "#f2c14f";
-        ctx.lineWidth = 2.1;
-        ctx.stroke();
-        ctx.restore();
-      }
-
       ctx.save();
       ctx.globalAlpha = 0.2;
       ctx.fillStyle = "#ffffff";
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.shadowColor = "#f4d37b";
-      ctx.shadowBlur = 22;
+      if (overlay.isMaxWin) {
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.shadowColor = "#f4d37b";
+        ctx.shadowBlur = 22;
+      }
       ctx.strokeStyle = "#f8e0a0";
       ctx.lineWidth = 4.2;
       ctx.stroke();
@@ -1957,23 +2042,57 @@ function drawWheel() {
   ctx.stroke();
 
   labels.forEach((label) => {
-    drawLabel(label.text, label.angle, label.radius, label.font, label.color, label.glow);
+    drawLabel(label.text, label.angle, label.radius, label.font, label.color, label.glow, cx, cy);
   });
 
   drawBreakEffect();
   drawBall();
 }
 
-async function animateBallSegment(startLocal, endLocal, durationSec, plan, elapsedStartSec) {
+function mapProgressForFinalHitSlowdown(progress, slowdownFactor) {
+  const clampedProgress = clamp01(progress);
+  const exponent = Math.max(1, slowdownFactor);
+  if (exponent <= 1.001) {
+    return clampedProgress;
+  }
+  // Cubic Hermite remap with non-zero end slope:
+  // starts at full speed (relative to base segment speed), then eases into a slower end speed.
+  const startSlope = exponent;
+  const endSlope = exponent * FINAL_HIT_END_SPEED_RATIO;
+  const t = clampedProgress;
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = -2 * t3 + 3 * t2;
+  const h11 = t3 - t2;
+  const remapped = h10 * startSlope + h01 + h11 * endSlope;
+  return clamp01(remapped);
+}
+
+async function animateBallSegment(
+  startLocal,
+  endLocal,
+  durationSec,
+  plan,
+  elapsedStartSec,
+  options = {},
+) {
   const durationMs = Math.max(16, durationSec * 1000);
   const startTime = performance.now();
+  const easeIntoSlowdown = Boolean(options.easeIntoSlowdown);
+  const slowdownFactor = Number.isFinite(options.slowdownFactor)
+    ? Math.max(1, options.slowdownFactor)
+    : 1;
 
   await new Promise((resolve) => {
     const frame = (now) => {
       const progress = Math.min((now - startTime) / durationMs, 1);
+      const movementProgress = easeIntoSlowdown
+        ? mapProgressForFinalHitSlowdown(progress, slowdownFactor)
+        : progress;
       const local = {
-        x: startLocal.x + (endLocal.x - startLocal.x) * progress,
-        y: startLocal.y + (endLocal.y - startLocal.y) * progress,
+        x: startLocal.x + (endLocal.x - startLocal.x) * movementProgress,
+        y: startLocal.y + (endLocal.y - startLocal.y) * movementProgress,
       };
 
       applyLayerRotationsForElapsed(plan, elapsedStartSec + durationSec * progress);
@@ -2164,7 +2283,7 @@ async function simulateSpins(count) {
   try {
     setSimulationStatus(
       state.mode === "stake"
-        ? `Simulating ${count} local preview spins (Stake payout is not affected)...`
+        ? `Simulating ${count} local spins (Stake payout is not affected)...`
         : `Simulating ${count} spins...`,
     );
     state.simulationLastBatch = null;
@@ -2282,7 +2401,7 @@ async function replaySimulationSpin(spinOverride) {
     await playRoundPlan(plan);
 
     state.activeLayerIndex = 0;
-    setStatus("Replay complete (preview only, no balance change).");
+    setStatus("Replay complete (no balance change).");
     setSimulationStatus(
       `Replayed spin ${spinNumber}/${batch.count}: ${formatMultiplier(winningMultiplier)} on ${layerName}.`,
     );
@@ -2600,6 +2719,10 @@ async function playRoundPlan(plan) {
       event.travelSeconds * travelScale,
       plan,
       elapsedSeconds,
+      {
+        easeIntoSlowdown: event.isWinningHit && !isZeroMultiplierWin,
+        slowdownFactor: shatterScale,
+      },
     );
     elapsedSeconds += event.travelSeconds * travelScale;
 
@@ -2739,11 +2862,6 @@ async function spinFlow() {
     updateProvablyFairPanel();
 
     setStatus("Ready");
-    if (state.mode === "stake") {
-      els.roundText.textContent = `Round complete: local hit ${formatMultiplier(winningMultiplier)} on ${state.layers[plan.winner.layerIndex].name}, payout settled by StakeEngine.`;
-    } else {
-      els.roundText.textContent = `Round complete: ${formatMultiplier(winningMultiplier)} on ${state.layers[plan.winner.layerIndex].name}.`;
-    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`Error: ${message}`);
@@ -2823,6 +2941,44 @@ function rotateClientSeed() {
 }
 
 function attachEvents() {
+  els.rulesButton?.addEventListener("click", () => {
+    playSfx("uiClick");
+    openRulesModal();
+  });
+
+  els.rulesCloseButton?.addEventListener("click", () => {
+    closeRulesModal();
+  });
+
+  els.rulesBackdrop?.addEventListener("click", () => {
+    closeRulesModal();
+  });
+
+  els.provablyFairButton?.addEventListener("click", () => {
+    playSfx("uiClick");
+    openProvablyFairModal();
+  });
+
+  els.provablyFairCloseButton?.addEventListener("click", () => {
+    closeProvablyFairModal();
+  });
+
+  els.provablyFairBackdrop?.addEventListener("click", () => {
+    closeProvablyFairModal();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.ui.provablyFairOpen) {
+      event.preventDefault();
+      closeProvablyFairModal();
+      return;
+    }
+    if (event.key === "Escape" && state.ui.rulesOpen) {
+      event.preventDefault();
+      closeRulesModal();
+    }
+  });
+
   els.spinButton.addEventListener("click", async () => {
     await spinFlow();
   });
@@ -2947,10 +3103,13 @@ function attachEvents() {
 }
 
 async function init() {
+  if (!ctx) {
+    throw new Error("Canvas 2D context is unavailable.");
+  }
+
   if (window.location.protocol === "file:") {
     setStatus("Open via http://localhost, not file://");
-    els.roundText.textContent =
-      "Run `python -m http.server 8080` and open http://localhost:8080";
+    console.error("Run `python -m http.server 8080` and open http://localhost:8080");
     return;
   }
 
@@ -2968,6 +3127,8 @@ async function init() {
   }
 
   syncBetFromConfig();
+  attachCanvasResizeObserver();
+  resizeCanvasToDisplaySize();
 
   // Render profile-driven HUD/canvas immediately so UI does not wait on networked SDK/session work.
   renderPaytable();
@@ -2986,7 +3147,7 @@ async function init() {
   renderSimulationTopWins();
   setSimulationStatus(
     state.mode === "stake"
-      ? "Local preview only: simulation does not change Stake balance or nonce."
+      ? "Simulation available: does not change Stake balance or nonce."
       : "Run a simulation batch to track top wins.",
   );
   updateSimulationReplayUi();
@@ -2997,7 +3158,7 @@ async function init() {
 
 init().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
-  els.roundText.textContent = `Initialization failed: ${message}`;
+  console.error(`Initialization failed: ${message}`);
   if (els.wheelProfileSummary && els.wheelProfileSummary.textContent.includes("Loading wheel profile")) {
     els.wheelProfileSummary.textContent = `Wheel profile load failed: ${message}`;
   }

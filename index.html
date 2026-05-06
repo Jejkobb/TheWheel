@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Outer Wheel - Layered MVP</title>
+    <title>The Wheel - Layered MVP</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -12,11 +12,10 @@
         <div class="left-top">
           <div class="bet-header">
             <span>Bet Amount</span>
-            <strong>0 ETH</strong>
           </div>
           <div class="bet-entry">
             <div class="bet-pill">
-              <span class="bet-pill-icon">$</span>
+              <span class="bet-currency">$</span>
               <input
                 id="betAmountInput"
                 class="bet-amount-input"
@@ -35,12 +34,6 @@
             </div>
           </div>
 
-          <div class="profile-control">
-            <label class="profile-label" for="wheelProfileSelect">Wheel Version</label>
-            <select id="wheelProfileSelect" class="profile-select" aria-label="Select wheel version"></select>
-            <p id="wheelProfileSummary" class="profile-summary">Loading wheel profile...</p>
-          </div>
-
           <div class="wallet-grid">
             <div class="wallet-item">
               <span>Credits</span>
@@ -51,12 +44,9 @@
               <strong id="winText">$0.00</strong>
             </div>
           </div>
-
-          <p id="roundText" class="round-hint">Press launch to send the ball from the core.</p>
         </div>
 
         <button id="spinButton" class="spin-btn" type="button" aria-label="Launch ball">
-          <span class="spin-arrows">O</span>
           <span class="spin-label">Place Bet</span>
         </button>
       </aside>
@@ -71,8 +61,10 @@
         <aside id="paytable" class="paytable" hidden></aside>
 
         <div class="utility-row">
-          <span class="utility-pill">Zero Edge Preview</span>
-          <span class="utility-links">Rules | Provably Fair</span>
+          <span class="utility-links">
+            <button id="rulesButton" class="utility-link-btn" type="button">Rules</button>
+            <button id="provablyFairButton" class="utility-link-btn" type="button">Provably Fair</button>
+          </span>
         </div>
       </section>
     </main>
@@ -85,10 +77,78 @@
       <p id="rtpText">100.00%</p>
     </section>
 
-    <section class="bottom-tools">
-      <section class="provably-fair">
-        <details open>
-          <summary>Provably Fair</summary>
+    <section
+      id="rulesModal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rulesTitle"
+      hidden
+    >
+      <div class="modal-backdrop" id="rulesBackdrop"></div>
+      <section class="modal-card">
+        <header class="modal-header">
+          <h2 id="rulesTitle">The Wheel Rules</h2>
+          <button
+            id="rulesCloseButton"
+            class="modal-close-btn"
+            type="button"
+            aria-label="Close rules window"
+          >
+            &times;
+          </button>
+        </header>
+        <div class="modal-body rules-body">
+          <p>The Wheel is a layered wheel game. You launch from the center and the round ends on the final landed multiplier.</p>
+          <h3>How A Round Resolves</h3>
+          <ol>
+            <li>Your bet is placed when you press <strong>Place Bet</strong>.</li>
+            <li>The ball travels and collides with slice walls.</li>
+            <li>Multiplier slices pay only when they are landed as the winning hit.</li>
+            <li>Blue breakthrough slices (double-chevron icon) advance the ball to the next outer layer after being armed and hit again.</li>
+            <li>The payout is bet × final multiplier where the round ends.</li>
+          </ol>
+          <h3>Important Notes</h3>
+          <ul>
+            <li>Only the final landed multiplier pays.</li>
+            <li>There is no chaining payout from previous layers.</li>
+            <li>Some slices are 0x and end the round with no return.</li>
+            <li>Max theoretical path in this game build is 10,000x.</li>
+          </ul>
+          <h3>Provably Fair</h3>
+          <p>
+            Outcomes are pre-resolved from deterministic hash material using
+            <code>SHA-256(serverSeed:clientSeed:nonce:cursor)</code>.
+            You can inspect and rotate your client seed in the Provably Fair window.
+          </p>
+        </div>
+      </section>
+    </section>
+
+    <section
+      id="provablyFairModal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="provablyFairTitle"
+      hidden
+    >
+      <div class="modal-backdrop" id="provablyFairBackdrop"></div>
+      <section class="modal-card">
+        <header class="modal-header">
+          <h2 id="provablyFairTitle">Provably Fair</h2>
+          <button
+            id="provablyFairCloseButton"
+            class="modal-close-btn"
+            type="button"
+            aria-label="Close provably fair window"
+          >
+            &times;
+          </button>
+        </header>
+        <div class="modal-body">
           <div class="fair-controls">
             <label class="fair-seed-label" for="clientSeedInput">Client Seed</label>
             <input id="clientSeedInput" class="fair-seed-input" type="text" maxlength="64" />
@@ -101,39 +161,11 @@
           <p class="fair-note">
             RNG stream: SHA-256(serverSeed:clientSeed:nonce:cursor). The round is resolved before animation.
           </p>
-        </details>
-      </section>
-
-      <section class="sim-panel">
-        <h3>Spin Simulator</h3>
-        <div class="sim-controls">
-          <button class="mini-btn sim-btn" id="sim100Button" type="button" data-sim-count="100">100</button>
-          <button class="mini-btn sim-btn" id="sim300Button" type="button" data-sim-count="300">300</button>
-          <button class="mini-btn sim-btn" id="sim500Button" type="button" data-sim-count="500">500</button>
-          <button class="mini-btn sim-btn" id="sim1000Button" type="button" data-sim-count="1000">1000</button>
         </div>
-        <div class="sim-replay">
-          <label class="sim-replay-label" for="simReplayInput">Watch Spin</label>
-          <input
-            id="simReplayInput"
-            class="sim-replay-input"
-            type="number"
-            min="1"
-            step="1"
-            placeholder="Spin #"
-          />
-          <button class="mini-btn sim-btn sim-replay-btn" id="simReplayButton" type="button">
-            Watch
-          </button>
-        </div>
-        <p id="simReplayHint" class="sim-status">Run a simulation batch first, then pick a spin.</p>
-        <p id="simStatusText" class="sim-status">Run a simulation batch to track top wins.</p>
-        <ol id="simTopList" class="sim-top-list">
-          <li>No simulation run yet.</li>
-        </ol>
       </section>
     </section>
 
     <script type="module" src="./app.js"></script>
   </body>
 </html>
+
