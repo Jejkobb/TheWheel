@@ -69,6 +69,101 @@
       </section>
     </main>
 
+    <section class="bottom-tools" aria-label="Simulation tools">
+      <section class="sim-panel">
+        <header class="sim-header">
+          <h2>Simulation Lab</h2>
+          <p id="simStatusText">Run a simulation batch to track top wins.</p>
+        </header>
+
+        <div class="sim-controls">
+          <span class="sim-control-label">Simulate</span>
+          <button class="mini-btn sim-count-btn" type="button" data-sim-count="100">100</button>
+          <button class="mini-btn sim-count-btn" type="button" data-sim-count="300">300</button>
+          <button class="mini-btn sim-count-btn" type="button" data-sim-count="500">500</button>
+          <button class="mini-btn sim-count-btn" type="button" data-sim-count="1000">1k</button>
+          <button class="mini-btn sim-count-btn" type="button" data-sim-count="10000">10k</button>
+          <button class="mini-btn sim-count-btn" type="button" data-sim-count="100000">100k</button>
+        </div>
+
+        <div class="sim-replay">
+          <label for="simReplayInput" class="sim-replay-label">Watch Spin</label>
+          <input
+            id="simReplayInput"
+            class="sim-replay-input"
+            type="number"
+            inputmode="numeric"
+            min="1"
+            step="1"
+            placeholder="#"
+          />
+          <button id="simReplayButton" class="mini-btn" type="button">Watch</button>
+          <p id="simReplayHint" class="sim-replay-hint">Run a simulation batch first, then pick a spin.</p>
+        </div>
+
+        <div class="sim-metrics-grid">
+          <article class="sim-metric">
+            <span>Spins</span>
+            <strong id="simMetricsSpins">-</strong>
+          </article>
+          <article class="sim-metric">
+            <span>Total Wager</span>
+            <strong id="simMetricsWager">-</strong>
+          </article>
+          <article class="sim-metric">
+            <span>Total Return</span>
+            <strong id="simMetricsReturn">-</strong>
+          </article>
+          <article class="sim-metric">
+            <span>Net (+/-)</span>
+            <strong id="simMetricsNet">-</strong>
+          </article>
+          <article class="sim-metric">
+            <span>RTP</span>
+            <strong id="simMetricsRtp">-</strong>
+          </article>
+          <article class="sim-metric">
+            <span>House Edge</span>
+            <strong id="simMetricsEdge">-</strong>
+          </article>
+          <article class="sim-metric">
+            <span>Hit Rate</span>
+            <strong id="simMetricsHitRate">-</strong>
+          </article>
+          <article class="sim-metric">
+            <span>Zero Rate</span>
+            <strong id="simMetricsZeroRate">-</strong>
+          </article>
+          <article class="sim-metric">
+            <span>Avg Multiplier</span>
+            <strong id="simMetricsAvgMult">-</strong>
+          </article>
+          <article class="sim-metric">
+            <span>Best Hit</span>
+            <strong id="simMetricsBestHit">-</strong>
+          </article>
+        </div>
+
+        <div class="sim-graph-wrap">
+          <header class="sim-subheader">
+            <h3>Net Trend</h3>
+            <p>Sampled cumulative net over the batch.</p>
+          </header>
+          <canvas id="simTrendCanvas" width="960" height="220" aria-label="Simulation net trend graph"></canvas>
+        </div>
+
+        <div class="sim-top-wrap">
+          <header class="sim-subheader">
+            <h3>Top Hits</h3>
+            <p>Click Watch to replay any listed spin.</p>
+          </header>
+          <ol id="simTopList" class="sim-top-list">
+            <li>No simulation run yet.</li>
+          </ol>
+        </div>
+      </section>
+    </section>
+
     <section class="telemetry-hidden" aria-hidden="true">
       <p id="modeText">Simulation</p>
       <p><span id="layerIndexText">1</span>/<span id="layerCountText">1</span></p>
@@ -107,7 +202,7 @@
             <li>The ball travels and collides with slice walls.</li>
             <li>Multiplier slices pay only when they are landed as the winning hit.</li>
             <li>Blue breakthrough slices (double-chevron icon) advance the ball to the next outer layer after being armed and hit again.</li>
-            <li>The payout is bet × final multiplier where the round ends.</li>
+            <li>The payout is bet &times; final multiplier where the round ends.</li>
           </ol>
           <h3>Important Notes</h3>
           <ul>
@@ -168,4 +263,3 @@
     <script type="module" src="./app.js"></script>
   </body>
 </html>
-

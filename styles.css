@@ -458,6 +458,209 @@ body.modal-open {
   display: none;
 }
 
+.bottom-tools {
+  width: min(1320px, calc(100vw - 20px));
+  margin: 0 auto 16px;
+  padding: 0 8px;
+}
+
+.sim-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #101722 0%, #0d141f 100%);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.sim-header {
+  display: grid;
+  gap: 2px;
+}
+
+.sim-header h2 {
+  margin: 0;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e5ecff;
+}
+
+#simStatusText {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.sim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sim-control-label {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.sim-count-btn {
+  min-width: 52px;
+  padding: 0 10px;
+}
+
+.sim-replay {
+  display: grid;
+  grid-template-columns: auto minmax(110px, 170px) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.sim-replay-label {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sim-replay-input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: #182134;
+  color: #edf3ff;
+  padding: 0 10px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  font-family: "JetBrains Mono", "Space Grotesk", "Segoe UI", sans-serif;
+}
+
+.sim-replay-hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+}
+
+.sim-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sim-metric {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #192231, #131b29);
+  padding: 8px 9px;
+  display: grid;
+  gap: 4px;
+}
+
+.sim-metric span {
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.sim-metric strong {
+  color: #eef3ff;
+  font-size: 0.94rem;
+  line-height: 1.15;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tone-positive {
+  color: #7df3ac !important;
+}
+
+.tone-negative {
+  color: #ff8a8a !important;
+}
+
+.tone-neutral {
+  color: #c9d5ee !important;
+}
+
+.sim-graph-wrap,
+.sim-top-wrap {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #151e2d, #111a28);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.sim-subheader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sim-subheader h3 {
+  margin: 0;
+  color: #e5ecff;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sim-subheader p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+#simTrendCanvas {
+  width: 100%;
+  height: clamp(168px, 24vw, 230px);
+  display: block;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0)),
+    #121a28;
+  border: 1px solid rgba(121, 137, 164, 0.24);
+}
+
+.sim-top-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.sim-top-list li {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(22, 30, 43, 0.92);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.sim-top-list li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .telemetry-hidden {
   position: absolute;
   width: 1px;
@@ -521,6 +724,19 @@ body.modal-open {
     min-height: auto;
   }
 
+  .sim-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sim-replay {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .sim-replay-hint {
+    font-size: 0.74rem;
+  }
+
   .wheel-shell {
     width: min(86vw, 560px);
   }
@@ -534,9 +750,53 @@ body.modal-open {
   }
 }
 
+@media (max-width: 640px) {
+  .sim-panel {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .sim-controls {
+    gap: 6px;
+  }
+
+  .sim-count-btn {
+    min-width: 48px;
+    padding: 0 8px;
+  }
+
+  .sim-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-subheader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  #simTrendCanvas {
+    height: clamp(146px, 44vw, 186px);
+  }
+
+  .sim-top-list li {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .sim-top-list li button {
+    margin-left: auto;
+  }
+}
+
 @media (max-width: 390px) {
   .game-shell {
     width: calc(100vw - 14px);
+  }
+
+  .bottom-tools {
+    width: calc(100vw - 14px);
+    padding: 0;
   }
 
   .left-rail,

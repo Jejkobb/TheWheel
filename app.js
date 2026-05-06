@@ -19,7 +19,8 @@ const BIG_REVEAL_MS = 520;
 const ZERO_MULTIPLIER_REVEAL_MS = 0;
 const FAIR_ROLL_COUNT = 192;
 const RTP_DISPLAY_TOLERANCE = 0.0005;
-const SIMULATION_BATCH_COUNTS = new Set([100, 300, 500, 1000]);
+const SIMULATION_BATCH_COUNTS = new Set([100, 300, 500, 1000, 10000, 100000]);
+const SIMULATION_GRAPH_MAX_POINTS = 320;
 const UP_SEGMENT_ICON = "\u2B06";
 const PROFILE_STORAGE_KEY = "the-wheel-profile";
 // CC0 crack silhouette from Wikimedia Commons (CrackedWindow1.png).
@@ -248,6 +249,17 @@ const els = {
   simButtons: Array.from(document.querySelectorAll("[data-sim-count]")),
   simReplayInput: document.getElementById("simReplayInput"),
   simReplayButton: document.getElementById("simReplayButton"),
+  simMetricsSpins: document.getElementById("simMetricsSpins"),
+  simMetricsWager: document.getElementById("simMetricsWager"),
+  simMetricsReturn: document.getElementById("simMetricsReturn"),
+  simMetricsNet: document.getElementById("simMetricsNet"),
+  simMetricsRtp: document.getElementById("simMetricsRtp"),
+  simMetricsEdge: document.getElementById("simMetricsEdge"),
+  simMetricsHitRate: document.getElementById("simMetricsHitRate"),
+  simMetricsZeroRate: document.getElementById("simMetricsZeroRate"),
+  simMetricsAvgMult: document.getElementById("simMetricsAvgMult"),
+  simMetricsBestHit: document.getElementById("simMetricsBestHit"),
+  simTrendCanvas: document.getElementById("simTrendCanvas"),
   rulesButton: document.getElementById("rulesButton"),
   rulesModal: document.getElementById("rulesModal"),
   rulesCloseButton: document.getElementById("rulesCloseButton"),
@@ -300,6 +312,7 @@ const state = {
   simulationTopWins: [],
   simulationNonceCursor: 0,
   simulationLastBatch: null,
+  simulationStats: null,
   sound: {
     enabled: true,
     pools: {},
@@ -590,6 +603,40 @@ function formatSignedMoney(amount, currency = state.balance.currency) {
   return `${sign}${formatMoney(Math.abs(amount), currency)}`;
 }
 
+function formatPercent(value, fractionDigits = 2) {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  return `${value.toFixed(fractionDigits)}%`;
+}
+
+function formatSignedPercent(value, fractionDigits = 2) {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${Math.abs(value).toFixed(fractionDigits)}%`;
+}
+
+function formatCompactNumber(value) {
+  if (!Number.isFinite(value)) {
+    return "0";
+  }
+  return Math.round(value).toLocaleString("en-US");
+}
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0.75) {
+    return "<1s";
+  }
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.round(seconds % 60);
+  return `${minutes}m ${String(remaining).padStart(2, "0")}s`;
+}
+
 function formatBetInputValue(rawAmount) {
   const amount = parseAmountFallback(rawAmount);
   if (!Number.isFinite(amount)) {
@@ -856,11 +903,173 @@ function updateSimulationReplayUi() {
 
   const selected = Number.parseInt(els.simReplayInput?.value || "", 10);
   if (!Number.isFinite(selected) || selected < 1 || selected > maxSpins) {
-    setSimulationReplayHint(`Pick a spin from 1 to ${maxSpins}.`);
+    setSimulationReplayHint(`Pick a spin from 1 to ${formatCompactNumber(maxSpins)}.`);
     return;
   }
 
-  setSimulationReplayHint(`Ready to replay spin ${selected}/${maxSpins}.`);
+  setSimulationReplayHint(
+    `Ready to replay spin ${formatCompactNumber(selected)}/${formatCompactNumber(maxSpins)}.`,
+  );
+}
+
+function setSimulationMetricValue(element, text, tone = "neutral") {
+  if (!element) {
+    return;
+  }
+
+  element.textContent = text;
+  element.classList.remove("tone-positive", "tone-negative", "tone-neutral");
+  if (tone === "positive" || tone === "negative" || tone === "neutral") {
+    element.classList.add(`tone-${tone}`);
+  }
+}
+
+function renderSimulationMetrics(stats = state.simulationStats) {
+  if (!stats) {
+    setSimulationMetricValue(els.simMetricsSpins, "-");
+    setSimulationMetricValue(els.simMetricsWager, "-");
+    setSimulationMetricValue(els.simMetricsReturn, "-");
+    setSimulationMetricValue(els.simMetricsNet, "-");
+    setSimulationMetricValue(els.simMetricsRtp, "-");
+    setSimulationMetricValue(els.simMetricsEdge, "-");
+    setSimulationMetricValue(els.simMetricsHitRate, "-");
+    setSimulationMetricValue(els.simMetricsZeroRate, "-");
+    setSimulationMetricValue(els.simMetricsAvgMult, "-");
+    setSimulationMetricValue(els.simMetricsBestHit, "-");
+    return;
+  }
+
+  const netTone = stats.net > 0 ? "positive" : stats.net < 0 ? "negative" : "neutral";
+  const rtpTone =
+    stats.rtpPercent > 100 ? "positive" : stats.rtpPercent < 100 ? "negative" : "neutral";
+  const edgeTone =
+    stats.edgePercent < 0 ? "positive" : stats.edgePercent > 0 ? "negative" : "neutral";
+  const avgTone =
+    stats.avgMultiplier > 1 ? "positive" : stats.avgMultiplier < 1 ? "negative" : "neutral";
+  const hitTone =
+    stats.hitRatePercent >= 50 ? "positive" : stats.hitRatePercent < 20 ? "negative" : "neutral";
+  const zeroTone =
+    stats.zeroRatePercent > 50 ? "negative" : stats.zeroRatePercent < 20 ? "positive" : "neutral";
+
+  setSimulationMetricValue(els.simMetricsSpins, formatCompactNumber(stats.count));
+  setSimulationMetricValue(els.simMetricsWager, formatMoney(stats.totalWager));
+  setSimulationMetricValue(els.simMetricsReturn, formatMoney(stats.totalReturn));
+  setSimulationMetricValue(els.simMetricsNet, formatSignedMoney(stats.net), netTone);
+  setSimulationMetricValue(els.simMetricsRtp, formatPercent(stats.rtpPercent), rtpTone);
+  setSimulationMetricValue(els.simMetricsEdge, formatSignedPercent(stats.edgePercent), edgeTone);
+  setSimulationMetricValue(els.simMetricsHitRate, formatPercent(stats.hitRatePercent), hitTone);
+  setSimulationMetricValue(els.simMetricsZeroRate, formatPercent(stats.zeroRatePercent), zeroTone);
+  setSimulationMetricValue(els.simMetricsAvgMult, formatMultiplier(stats.avgMultiplier), avgTone);
+
+  if (stats.best) {
+    const bestText = `${formatMultiplier(stats.best.multiplier)} (Spin ${formatCompactNumber(stats.best.spin)})`;
+    setSimulationMetricValue(els.simMetricsBestHit, bestText, "positive");
+  } else {
+    setSimulationMetricValue(els.simMetricsBestHit, "-");
+  }
+}
+
+function renderSimulationTrendGraph(stats = state.simulationStats) {
+  const canvas = els.simTrendCanvas;
+  if (!canvas) {
+    return;
+  }
+
+  const graphCtx = canvas.getContext("2d");
+  if (!graphCtx) {
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const cssWidth = Math.max(320, Math.round(rect.width || canvas.clientWidth || 960));
+  const cssHeight = Math.max(140, Math.round(rect.height || canvas.clientHeight || 220));
+  const pixelRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const renderWidth = Math.round(cssWidth * pixelRatio);
+  const renderHeight = Math.round(cssHeight * pixelRatio);
+
+  if (canvas.width !== renderWidth || canvas.height !== renderHeight) {
+    canvas.width = renderWidth;
+    canvas.height = renderHeight;
+  }
+
+  graphCtx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  graphCtx.clearRect(0, 0, cssWidth, cssHeight);
+
+  const points = stats?.trendPoints ?? [];
+  const padLeft = 44;
+  const padRight = 12;
+  const padTop = 12;
+  const padBottom = 20;
+  const chartWidth = Math.max(10, cssWidth - padLeft - padRight);
+  const chartHeight = Math.max(10, cssHeight - padTop - padBottom);
+
+  graphCtx.strokeStyle = "rgba(146, 164, 196, 0.2)";
+  graphCtx.lineWidth = 1;
+  for (let i = 0; i <= 4; i += 1) {
+    const y = padTop + (chartHeight / 4) * i;
+    graphCtx.beginPath();
+    graphCtx.moveTo(padLeft, y);
+    graphCtx.lineTo(padLeft + chartWidth, y);
+    graphCtx.stroke();
+  }
+
+  if (points.length < 2) {
+    graphCtx.fillStyle = "rgba(193, 205, 227, 0.72)";
+    graphCtx.font = '600 12px "Space Grotesk", "Segoe UI", sans-serif';
+    graphCtx.textAlign = "center";
+    graphCtx.fillText("Run a simulation batch to draw trend data.", cssWidth / 2, cssHeight / 2 + 4);
+    return;
+  }
+
+  let minNet = 0;
+  let maxNet = 0;
+  for (const point of points) {
+    minNet = Math.min(minNet, point.net);
+    maxNet = Math.max(maxNet, point.net);
+  }
+  if (Math.abs(maxNet - minNet) < 1) {
+    minNet -= Math.max(state.betAmount, 1);
+    maxNet += Math.max(state.betAmount, 1);
+  }
+
+  const toX = (spin) => padLeft + (spin / Math.max(1, stats.count)) * chartWidth;
+  const toY = (net) => {
+    const range = Math.max(1, maxNet - minNet);
+    return padTop + ((maxNet - net) / range) * chartHeight;
+  };
+
+  const zeroY = toY(0);
+  graphCtx.setLineDash([5, 4]);
+  graphCtx.strokeStyle = "rgba(204, 214, 234, 0.45)";
+  graphCtx.beginPath();
+  graphCtx.moveTo(padLeft, zeroY);
+  graphCtx.lineTo(padLeft + chartWidth, zeroY);
+  graphCtx.stroke();
+  graphCtx.setLineDash([]);
+
+  const lineColor = stats.net >= 0 ? "#6de8a8" : "#ff8d8d";
+  graphCtx.lineWidth = 2;
+  graphCtx.strokeStyle = lineColor;
+  graphCtx.beginPath();
+  for (let i = 0; i < points.length; i += 1) {
+    const point = points[i];
+    const x = toX(point.spin);
+    const y = toY(point.net);
+    if (i === 0) {
+      graphCtx.moveTo(x, y);
+    } else {
+      graphCtx.lineTo(x, y);
+    }
+  }
+  graphCtx.stroke();
+
+  graphCtx.fillStyle = "rgba(221, 230, 247, 0.86)";
+  graphCtx.font = '600 11px "JetBrains Mono", "Consolas", monospace';
+  graphCtx.textAlign = "left";
+  graphCtx.fillText(formatSignedMoney(maxNet), 4, padTop + 8);
+  graphCtx.fillText(formatSignedMoney(minNet), 4, padTop + chartHeight);
+  graphCtx.textAlign = "right";
+  graphCtx.fillText(formatCompactNumber(stats.count), padLeft + chartWidth, cssHeight - 4);
 }
 
 function renderSimulationTopWins(entries = state.simulationTopWins) {
@@ -877,7 +1086,7 @@ function renderSimulationTopWins(entries = state.simulationTopWins) {
     .slice(0, 3)
     .map(
       (entry, index) =>
-        `<li><span>#${index + 1} Spin ${entry.spin} | ${formatMultiplier(entry.multiplier)} | ${formatMoney(entry.winAmount)} | ${entry.layerName}</span><button class="mini-btn" type="button" data-replay-spin="${entry.spin}">Watch</button></li>`,
+        `<li><span>#${index + 1} Spin ${formatCompactNumber(entry.spin)} | ${formatMultiplier(entry.multiplier)} | ${formatMoney(entry.winAmount)} | ${entry.layerName}</span><button class="mini-btn" type="button" data-replay-spin="${entry.spin}">Watch</button></li>`,
     )
     .join("");
 
@@ -1155,7 +1364,10 @@ function applyWheelProfile(profileKey, options = {}) {
   if (resetSimulation) {
     state.simulationLastBatch = null;
     state.simulationTopWins = [];
+    state.simulationStats = null;
     renderSimulationTopWins([]);
+    renderSimulationMetrics();
+    renderSimulationTrendGraph();
     setSimulationReplayHint("Profile changed. Run a simulation batch first, then pick a spin.");
     setSimulationStatus(
       state.mode === "stake"
@@ -2279,16 +2491,27 @@ async function simulateSpins(count) {
   let processedSpins = 0;
   let totalSimulatedReturn = 0;
   let totalSimulatedWager = 0;
+  let cumulativeNet = 0;
+  let totalMultiplier = 0;
+  let hitCount = 0;
+  let zeroCount = 0;
+  const trendPoints = [{ spin: 0, net: 0 }];
+  const trendSampleStep = Math.max(1, Math.floor(count / SIMULATION_GRAPH_MAX_POINTS));
+  const progressStep = count >= 100000 ? 1000 : count >= 10000 ? 250 : 50;
+  const startedAt = performance.now();
 
   try {
     setSimulationStatus(
       state.mode === "stake"
-        ? `Simulating ${count} local spins (Stake payout is not affected)...`
-        : `Simulating ${count} spins...`,
+        ? `Simulating ${formatCompactNumber(count)} local spins (Stake payout is not affected)...`
+        : `Simulating ${formatCompactNumber(count)} spins...`,
     );
     state.simulationLastBatch = null;
     state.simulationTopWins = [];
+    state.simulationStats = null;
     renderSimulationTopWins([]);
+    renderSimulationMetrics();
+    renderSimulationTrendGraph();
     updateSimulationReplayUi();
 
     for (let i = 0; i < count; i += 1) {
@@ -2298,6 +2521,19 @@ async function simulateSpins(count) {
       const winAmount = Math.floor(state.betAmount * multiplier);
       totalSimulatedReturn += winAmount;
       totalSimulatedWager += state.betAmount;
+      totalMultiplier += multiplier;
+      if (multiplier > 0) {
+        hitCount += 1;
+      } else {
+        zeroCount += 1;
+      }
+      cumulativeNet += winAmount - state.betAmount;
+      if ((i + 1) % trendSampleStep === 0 || i === count - 1) {
+        trendPoints.push({
+          spin: i + 1,
+          net: cumulativeNet,
+        });
+      }
       const layerName = state.layers[plan.winner.layerIndex]?.name ?? "Unknown Layer";
 
       recordSimulationTopWin(localTop, {
@@ -2307,39 +2543,74 @@ async function simulateSpins(count) {
         layerName,
       });
 
-      if ((i + 1) % 25 === 0 || i === count - 1) {
+      if ((i + 1) % progressStep === 0 || i === count - 1) {
         state.simulationTopWins = [...localTop];
         renderSimulationTopWins();
-        setSimulationStatus(`Simulating ${count} spins... ${i + 1}/${count}`);
+        const elapsedSeconds = Math.max((performance.now() - startedAt) / 1000, 0.001);
+        const completed = i + 1;
+        const spinsPerSecond = completed / elapsedSeconds;
+        const remainingSpins = count - completed;
+        const etaSeconds = remainingSpins / Math.max(spinsPerSecond, 0.001);
+        const progressPercent = (completed / count) * 100;
+        setSimulationStatus(
+          `Simulating ${formatCompactNumber(count)} spins... ${formatCompactNumber(completed)}/${formatCompactNumber(count)} (${progressPercent.toFixed(1)}%), ETA ${formatDuration(etaSeconds)}.`,
+        );
         await new Promise((resolve) => requestAnimationFrame(resolve));
       }
     }
 
+    const best = localTop[0] ?? null;
+    const net = totalSimulatedReturn - totalSimulatedWager;
+    const rtpPercent =
+      totalSimulatedWager > 0 ? (totalSimulatedReturn / totalSimulatedWager) * 100 : 0;
+    const edgePercent = 100 - rtpPercent;
+    const hitRatePercent = processedSpins > 0 ? (hitCount / processedSpins) * 100 : 0;
+    const zeroRatePercent = processedSpins > 0 ? (zeroCount / processedSpins) * 100 : 0;
+    const avgMultiplier = processedSpins > 0 ? totalMultiplier / processedSpins : 0;
+
     state.simulationTopWins = [...localTop];
+    state.simulationStats = {
+      count: processedSpins,
+      totalWager: totalSimulatedWager,
+      totalReturn: totalSimulatedReturn,
+      net,
+      rtpPercent,
+      edgePercent,
+      hitRatePercent,
+      zeroRatePercent,
+      avgMultiplier,
+      best,
+      trendPoints,
+    };
     state.simulationLastBatch = {
       baseNonce,
       count: processedSpins,
     };
     renderSimulationTopWins();
+    renderSimulationMetrics();
+    renderSimulationTrendGraph();
 
-    const best = localTop[0];
     if (els.simReplayInput && best) {
       els.simReplayInput.value = String(best.spin);
     }
     updateSimulationReplayUi();
     if (best) {
-      const net = totalSimulatedReturn - totalSimulatedWager;
       setSimulationStatus(
-        `Done ${count} spins. Best: ${formatMultiplier(best.multiplier)} on spin ${best.spin}. Net: ${formatSignedMoney(net)} (${formatMoney(totalSimulatedReturn)} return vs ${formatMoney(totalSimulatedWager)} wager).`,
+        `Done ${formatCompactNumber(count)} spins. RTP ${formatPercent(rtpPercent)}. Net ${formatSignedMoney(net)}. Best ${formatMultiplier(best.multiplier)} on spin ${formatCompactNumber(best.spin)}.`,
       );
-      setSimulationReplayHint(`Batch ready. Replays available for spins 1-${processedSpins}.`);
+      setSimulationReplayHint(
+        `Batch ready. Replays available for spins 1-${formatCompactNumber(processedSpins)}.`,
+      );
     } else {
-      setSimulationStatus(`Done ${count} spins.`);
+      setSimulationStatus(`Done ${formatCompactNumber(count)} spins.`);
       setSimulationReplayHint("Batch complete but no replayable spins were found.");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     state.simulationLastBatch = null;
+    state.simulationStats = null;
+    renderSimulationMetrics();
+    renderSimulationTrendGraph();
     updateSimulationReplayUi();
     setSimulationStatus(`Simulation failed: ${message}`);
   } finally {
@@ -2368,7 +2639,7 @@ async function replaySimulationSpin(spinOverride) {
   );
 
   if (!Number.isFinite(requestedSpin) || requestedSpin < 1 || requestedSpin > batch.count) {
-    setSimulationReplayHint(`Pick a spin from 1 to ${batch.count}.`);
+    setSimulationReplayHint(`Pick a spin from 1 to ${formatCompactNumber(batch.count)}.`);
     updateSimulationReplayUi();
     return;
   }
@@ -2403,7 +2674,7 @@ async function replaySimulationSpin(spinOverride) {
     state.activeLayerIndex = 0;
     setStatus("Replay complete (no balance change).");
     setSimulationStatus(
-      `Replayed spin ${spinNumber}/${batch.count}: ${formatMultiplier(winningMultiplier)} on ${layerName}.`,
+      `Replayed spin ${formatCompactNumber(spinNumber)}/${formatCompactNumber(batch.count)}: ${formatMultiplier(winningMultiplier)} on ${layerName}.`,
     );
     if (els.simReplayInput) {
       els.simReplayInput.value = String(spinNumber);
@@ -2913,9 +3184,12 @@ function applyClientSeed() {
   state.simulationNonceCursor = 0;
   state.simulationLastBatch = null;
   state.simulationTopWins = [];
+  state.simulationStats = null;
   persistProvablyFairState();
   updateProvablyFairPanel();
   renderSimulationTopWins();
+  renderSimulationMetrics();
+  renderSimulationTrendGraph();
   setSimulationStatus("Seed updated. Run a new simulation batch for replay data.");
   updateSimulationReplayUi();
   setStatus("Client seed applied and nonce reset.");
@@ -2932,9 +3206,12 @@ function rotateClientSeed() {
   state.simulationNonceCursor = 0;
   state.simulationLastBatch = null;
   state.simulationTopWins = [];
+  state.simulationStats = null;
   persistProvablyFairState();
   updateProvablyFairPanel();
   renderSimulationTopWins();
+  renderSimulationMetrics();
+  renderSimulationTrendGraph();
   setSimulationStatus("Seed rotated. Run a new simulation batch for replay data.");
   updateSimulationReplayUi();
   setStatus("Client seed rotated and nonce reset.");
@@ -3100,6 +3377,21 @@ function attachEvents() {
     updateSimulationReplayUi();
     await replaySimulationSpin(spin);
   });
+
+  let resizeGraphRaf = 0;
+  window.addEventListener(
+    "resize",
+    () => {
+      if (resizeGraphRaf) {
+        cancelAnimationFrame(resizeGraphRaf);
+      }
+      resizeGraphRaf = requestAnimationFrame(() => {
+        resizeGraphRaf = 0;
+        renderSimulationTrendGraph();
+      });
+    },
+    { passive: true },
+  );
 }
 
 async function init() {
@@ -3145,6 +3437,8 @@ async function init() {
   renderPaytable();
   updateHud();
   renderSimulationTopWins();
+  renderSimulationMetrics();
+  renderSimulationTrendGraph();
   setSimulationStatus(
     state.mode === "stake"
       ? "Simulation available: does not change Stake balance or nonce."
